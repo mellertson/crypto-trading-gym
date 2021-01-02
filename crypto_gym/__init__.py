@@ -6,7 +6,7 @@ from . import datasets
 
 register(
     id='forex-v0',
-    entry_point='gym_anytrading.envs:ForexEnv',
+    entry_point='crypto_gym.envs:ForexEnv',
     kwargs={
         'df': deepcopy(datasets.FOREX_EURUSD_1H_ASK),
         'window_size': 24,
@@ -16,7 +16,7 @@ register(
 
 register(
     id='stocks-v0',
-    entry_point='gym_anytrading.envs:StocksEnv',
+    entry_point='crypto_gym.envs:StocksEnv',
     kwargs={
         'df': deepcopy(datasets.STOCKS_GOOGL),
         'window_size': 30,
