@@ -1,3 +1,5 @@
+from time import sleep
+from datetime import datetime, timedelta, timezone
 import multiprocessing as mp
 from multiprocessing import queues
 import copy
@@ -71,6 +73,9 @@ class ReplayMemory:
 
 		# Threshold for splitting between low and high estimation errors.
 		self.error_threshold = 0.1
+
+	def get_count_states(self):
+		return self.num_used
 
 	def is_full(self):
 		"""Return boolean whether the replay-memory is full."""
@@ -535,7 +540,7 @@ class QLearningAgent(object):
 	Agent which uses Q-Learning with a neural network to trade crypto.
 
 	:ivar model: Either a nupic or tensorflow model, which makes predictions.
-	:type model: crypto_gym.models.ModelBase
+	:type model: crypto_gym.models.NupicModel
 	"""
 
 	def __init__(self, env_name, model_class_name, exchange, base, quote,
@@ -547,6 +552,7 @@ class QLearningAgent(object):
 		self.base = base
 		self.quote = quote
 		self.period_secs = period_secs
+		self.period_td = timedelta(seconds=period_secs)
 		self.ob_levels = ob_levels
 		self.window_size = window_size
 		self.base_url = base_url
@@ -667,13 +673,25 @@ class QLearningAgent(object):
 		:rtype: None
 		"""
 		# Counter for the number of states we have processed.
-		count_states = self.model.get_count_states()
-		# Counter for the number of episodes we have processed.
-		count_episodes = self.model.get_count_episodes()
+		count_states = self.replay_memory.get_count_states()
+		now = datetime.now()
+		next_cycle_timestamp = datetime(
+			now.year,
+			now.month,
+			now.day,
+			now.hour,
+			now.minute,
+			now.second,
+		)
+		next_cycle_timestamp = next_cycle_timestamp - self.period_td
+		observation = self.env.get_next_observation()
 
 		while self.is_running:
-			observation = self.env.get_next_observation()
-			q_values = self.model.get_predicted_actions(observation)
+			if datetime.now() < next_cycle_timestamp:
+				pause = next_cycle_timestamp - datetime.now()
+				sleep(pause.total_seconds())
+			q_values = self.model.get_predicted_actions(next_cycle_timestamp, observation)
+			next_cycle_timestamp = next_cycle_timestamp + self.period_td
 			# Determine the action that the agent must take in the game-environment.
 			# The epsilon is just used for printing further below.
 			action, epsilon = self.epsilon_greedy.get_action(
@@ -682,16 +700,16 @@ class QLearningAgent(object):
 			)
 
 			# Take a step in the game-environment using the given action.
-			img, reward, end_episode, info = self.env.step(action=action)
+			observation, reward, end_episode, info = self.env.step(action=action)
 
-			# Increase the counter for the number of states that have been processed.
-			count_states = self.model.increase_count_states()
+			# TODO: calculate if the agent has "lost a life" in `end_life` var.
+			end_life = False
 
 			if self.render:
 				self.env.render()
 
 			# Add the state of the game-environment to the replay-memory.
-			self.replay_memory.add(state=state,
+			self.replay_memory.add(state=observation,
 								   q_values=q_values,
 								   action=action,
 								   reward=reward,
@@ -718,9 +736,12 @@ class QLearningAgent(object):
 				# improve the estimates for the Q-values.
 				# This will sample random batches from the replay-memory.
 				# HIGH: write NupicModel.optimize() method.
-				self.model.optimize(learning_rate=learning_rate,
-									loss_limit=loss_limit,
-									max_epochs=max_epochs)
+				self.model.optimize(
+
+					learning_rate=learning_rate,
+					loss_limit=loss_limit,
+					max_epochs=max_epochs,
+				)
 
 				# Save a checkpoint of the Neural Network so we can reload it.
 				# HIGH: write NupicModel.save_checkpoint() method.

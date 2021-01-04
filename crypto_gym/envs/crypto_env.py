@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 import requests
 import gym
-import json, prettyprint
+import json, prettyprint, copy
+import collections
 from datetime import datetime, timezone, timedelta
 from gym import spaces
 from gym.utils import seeding
@@ -38,11 +39,10 @@ class CryptoEnv(gym.Env):
 			# TODO: add liquidate to Django REST API for 'liquidate' action.
 			# 'liquidate',
 		]
-		self._amount_actions = {
-			'amount_level_1': 0.001, #: meaning 0.1% of account.free_balance.
-			'amount_level_2': 0.002, #: meaning 0.2% of account.free_balance.
-			'amount_level_3': 0.003, #: meaning 0.3% of account.free_balance.
-		}
+		self._amount_actions = collections.OrderedDict()
+		self._amount_actions['amount_level_1'] = 0.001 #: meaning 0.1% of account.free_balance.
+		self._amount_actions['amount_level_2'] = 0.002 #: meaning 0.2% of account.free_balance.
+		self._amount_actions['amount_level_3'] = 0.003 #: meaning 0.3% of account.free_balance.
 		self._price_actions = [
 			'price_level_1',
 			'price_level_2',
@@ -53,6 +53,7 @@ class CryptoEnv(gym.Env):
 			len(self._amount_actions),
 			len(self._price_actions),
 		])
+		self.action_names = self.build_action_names()
 		# define the observation space
 		self._order_book_length = ob_levels * 4 #: buy & sell price & amount per ob level
 		self._trade_length = 4 #: buy & sell price & amount
@@ -67,6 +68,21 @@ class CryptoEnv(gym.Env):
 		self.account_bal_df = None
 		self.last_total_balance = None
 		self.orders = []
+
+	def build_action_names(self):
+		primary_action_names = copy.deepcopy(self._primary_actions)
+		amount_action_names = []
+		for amount_action_name in self._amount_actions.keys():
+			amount_action_names.append(amount_action_name)
+		price_action_names = []
+		for price_action_name in self._price_actions:
+			price_action_names.append(price_action_name)
+		action_names = {
+			'primary': primary_action_names,
+			'amount': amount_action_names,
+			'price': price_action_names,
+		}
+		return action_names
 
 	def seed(self, seed=None):
 		return seeding.np_random(seed)

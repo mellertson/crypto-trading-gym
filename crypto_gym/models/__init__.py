@@ -1,3 +1,5 @@
+import requests, json, copy
+from datetime import datetime
 from .nupic import *
 from .tensforflow import *
 
@@ -6,16 +8,28 @@ __all__ = [
 	'ModelBase',
 	'TensorflowModel',
 	'NupicModel',
+	'PREDICTOR_SERVER_BASE_URL',
+	'set_predictor_server_base_url',
 ]
+
+
+PREDICTOR_SERVER_BASE_URL = 'http://localhost:5000'
+
+
+def set_predictor_server_base_url(url):
+	PREDICTOR_SERVER_BASE_URL = url
 
 
 class ModelBase(object):
 	""" Base class used to implement a Q-learning model. """
 
-	# HIGH: finish writing the Q-learning base class.
+	# HIGH: finish writing the q-learning ModelBase class.
 
-	def __init__(self, num_actions, replay_memory, *args, **kwargs):
+	def __init__(self, num_actions, replay_memory, exchange,
+				 market, predicted_field, *args, **kwargs):
 		super().__init__(*args, **kwargs)
+		self.model_filename = os.path.join(MODEL_DIR, 'nupic-model-v1.yaml')
+		self.send_new_predictor_message()
 
 	@property
 	def name(self):
@@ -76,39 +90,10 @@ class ModelBase(object):
 		"""Close the TensorFlow session."""
 		pass
 
-	def get_count_states(self):
-		"""
-		Get the number of states that has been processed in the game-environment.
-		This is not used by the TensorFlow graph. It is just a hack to save and
-		reload the counter along with the checkpoint-file.
-		"""
-		raise NotImplementedError()
-
-	def get_count_episodes(self):
-		"""
-		Get the number of episodes that has been processed in the game-environment.
-		"""
-		raise NotImplementedError()
-
-	def increase_count_states(self):
-		"""
-		Increase the number of states that has been processed
-		in the game-environment.
-		"""
-		raise NotImplementedError()
-
-	def increase_count_episodes(self):
-		"""
-		Increase the number of episodes that has been processed
-		in the game-environment.
-		"""
-		raise NotImplementedError()
-
 	def save_checkpoint(count_states):
 		"""
 		Serialize the model to the Django database so it can be loaded later.
 		"""
 		print(f'TODO: implement {self.name}.save_checkpoint()!')
-
 
 
