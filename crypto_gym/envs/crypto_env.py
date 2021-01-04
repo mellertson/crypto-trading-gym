@@ -9,15 +9,6 @@ from gym.utils import seeding
 from .trading_env import TradingEnv
 
 
-# COMPLETE: create reset() method
-# COMPLETE: create step() method
-# COMPLETE: create render() method
-# COMPLETE: create close() method
-# FIXME: HIGH: refactor Env.done(), so it uses total account balance + value
-#  of open orders in its calculation.
-# MEDIUM: verify if `CryptoEnv.reward` works correctly.
-
-
 class CryptoEnv(gym.Env):
 	""" An Open AI Gym environment to trade crypto-currency on an exchange. """
 	metadata = {'render.modes': ['ascii']}
@@ -259,7 +250,7 @@ class CryptoEnv(gym.Env):
 			False - if the account balance is zero AND there are no open orders.
 		:rtype: bool
 		"""
-		return self.current_episode >= self.max_episodes
+		return False
 
 	@property
 	def reward(self):
@@ -329,6 +320,7 @@ class CryptoEnv(gym.Env):
 			'ob_levels': self.ob_levels,
 			'window_size': self.window_size,
 			'orders': self.orders,
+			'reward': f'{self.reward:,.10f}',
 		}
 
 	def render(self, mode='ascii'):
