@@ -11,11 +11,19 @@ from .trading_env import TradingEnv
 
 
 class CryptoEnv(gym.Env):
-	""" An Open AI Gym environment to trade crypto-currency on an exchange. """
+	"""
+	An Open AI Gym environment to trade crypto-currency on an exchange.
+
+	:ivar base_url: The URL to the Django REST API server, which is used to
+		get order book and trade data.  And also to place trades with the
+		upstream exchange.
+		For example: 'http://localhost:8000'
+	:type base_url: str
+	"""
 	metadata = {'render.modes': ['ascii']}
 
-	def __init__(self, exchange, base, quote, period_secs, ob_levels,
-				 window_size, base_url, max_episodes, *args, **kwargs):
+	def __init__(self, exchange, base, quote, period_secs, ob_levels, base_url,
+				 *args, **kwargs):
 		# ivars
 		self.exchange = exchange
 		self.base = base
@@ -23,9 +31,7 @@ class CryptoEnv(gym.Env):
 		self.period_secs = period_secs
 		self.period_td = timedelta(seconds=period_secs)
 		self.ob_levels = ob_levels
-		self.window_size = window_size
 		self.base_url = base_url #: e.g. 'http://localhost:8000'
-		self.max_episodes = max_episodes
 		self.current_episode = 0
 		self.last_step_dt = None
 		self.observation = None
@@ -58,16 +64,56 @@ class CryptoEnv(gym.Env):
 		self._order_book_length = ob_levels * 4 #: buy & sell price & amount per ob level
 		self._trade_length = 4 #: buy & sell price & amount
 		self._account_bal_length = 3 #: total, used, & free balances
-		self.shape = (
+		self.shape = tuple([
 			self._order_book_length +
 			self._trade_length +
-			self._account_bal_length)
+			self._account_bal_length])
 		self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=self.shape)
 		self.order_book_df = None
 		self.trade_df = None
 		self.account_bal_df = None
 		self.last_total_balance = None
 		self.orders = []
+
+	def get_input_field_names(self):
+		"""
+		Return a list of field names from the data source.
+
+		# HIGH: build input field names dynamically from the Django JSON data.
+
+		:rtype: list of str
+		"""
+		order_book_data = {
+			'order_book_ask_price_lvl_1': ['101.0000000000'],
+			'order_book_ask_amount_lvl_1': ['0.1010000000'],
+			'order_book_bid_price_lvl_1': ['100.0000000000'],
+			'order_book_bid_amount_lvl_1': ['0.1000000000'],
+
+			'order_book_ask_price_lvl_2': ['102.0000000000'],
+			'order_book_ask_amount_lvl_2': ['0.1020000000'],
+			'order_book_bid_price_lvl_2': ['99.0000000000'],
+			'order_book_bid_amount_lvl_2': ['0.0990000000'],
+
+			'order_book_ask_price_lvl_3': ['103.0000000000'],
+			'order_book_ask_amount_lvl_3': ['0.1030000000'],
+			'order_book_bid_price_lvl_3': ['98.0000000000'],
+			'order_book_bid_amount_lvl_3': ['0.0980000000'],
+		}
+		trade_data = {
+			'trade_sell_price': '20000.0000000000',
+			'trade_sell_amount': '100.0000000000',
+			'trade_buy_price': '21000.0000000000',
+			'trade_buy_amount': '200.0000000000',
+		}
+		account_balance_data = {
+			'total_balance': '<str:account.total_balance>',
+			'used_balance': '<str:account.used_balance>',
+			'free_balance': '<str:account.free_balance>',
+		}
+		fields = list(order_book_data.keys())
+		fields.extend(trade_data.keys())
+		fields.extend(account_balance_data.keys())
+		return fields
 
 	def build_action_names(self):
 		primary_action_names = copy.deepcopy(self._primary_actions)
@@ -326,7 +372,6 @@ class CryptoEnv(gym.Env):
 	def current_info(self):
 		return {
 			'current_episode': self.current_episode,
-			'max_episodes': self.max_episodes,
 			'order_book': self.order_book_df,
 			'trade': self.trade_df,
 			'account_balance': self.account_bal_df,
@@ -337,7 +382,6 @@ class CryptoEnv(gym.Env):
 			'period_secs': self.period_secs,
 			'period_td': self.period_td,
 			'ob_levels': self.ob_levels,
-			'window_size': self.window_size,
 			'orders': self.orders,
 			'reward': f'{self.reward:,.10f}',
 		}

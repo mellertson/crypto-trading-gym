@@ -1,5 +1,6 @@
 import requests, json, copy
 from datetime import datetime
+import os
 
 
 
@@ -22,11 +23,8 @@ class ModelBase(object):
 
 	# HIGH: finish writing the q-learning ModelBase class.
 
-	def __init__(self, num_actions, replay_memory, exchange,
-				 market, predicted_field, *args, **kwargs):
+	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
-		self.model_filename = os.path.join(MODEL_DIR, 'nupic-model-v1.yaml')
-		self.send_new_predictor_message()
 
 	@property
 	def name(self):

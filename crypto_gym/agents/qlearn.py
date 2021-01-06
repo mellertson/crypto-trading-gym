@@ -3,7 +3,9 @@ from datetime import datetime, timedelta, timezone
 import multiprocessing as mp
 from multiprocessing import queues
 import copy
-from crypto_gym import models
+import numpy as np
+from crypto_gym.models import nupic as models
+from crypto_gym.envs import CryptoEnv
 
 
 __all__ = [
@@ -433,26 +435,30 @@ class QLearningAgent(object):
 	:type model: crypto_gym.models.NupicModel
 	"""
 
-	def __init__(self, env_name, model_class_name, exchange, base, quote,
-				 period_secs, ob_levels, window_size, base_url, max_episodes,
-				 discount_factor=0.97, render=False):
+	def __init__(self, env_name, exchange, base, quote, period_secs, ob_levels,
+				 base_url, discount_factor=0.97, render=False):
 		self.env_name = env_name
-		self.model_type = model_class_name
 		self.exchange = exchange
 		self.base = base
 		self.quote = quote
 		self.period_secs = period_secs
 		self.period_td = timedelta(seconds=period_secs)
 		self.ob_levels = ob_levels
-		self.window_size = window_size
 		self.base_url = base_url
-		self.max_episodes = max_episodes
 		self.discount_factor = discount_factor
 		self.render = render
 		# instantiate Open AI Gym environment
-		self.env = gym.make(env_name)
+		# self.env = gym.make(env_name)
+		self.env = CryptoEnv(
+			self.exchange,
+			self.base,
+			self.quote,
+			self.period_secs,
+			self.ob_levels,
+			self.base_url,
+		)
 		# The number of possible actions that the agent may take in every step.
-		self.num_actions = self.env.action_space.n
+		self.num_actions = sum(self.env.action_space.nvec)
 		# Epsilon-greedy policy for selecting an action from the Q-values.
 		# During training the epsilon is decreased linearly over the given
 		# number of iterations. During testing the fixed epsilon is used.
@@ -507,7 +513,7 @@ class QLearningAgent(object):
 		)
 		# We only create the replay-memory when we are training the agent,
 		# because it requires a lot of RAM.
-		state_shape = [13] #: number of input fields in each observation
+		state_shape = 13 #: number of input fields in each observation
 		self.replay_memories = []
 		for action_names in self.env.action_names.values():
 			replay_memory = ReplayMemory(
@@ -519,12 +525,17 @@ class QLearningAgent(object):
 			self.replay_memories.append(replay_memory)
 
 		# instantiate the nupic model
+		model_class_name = 'NupicModel'
 		model_class = getattr(models, model_class_name, None)
 		if model_class is None:
 			raise ValueError(f'{model_class_name} class not found in {models}')
 		self.model = model_class(
-			num_actions=self.num_actions,
-			replay_memory=self.replay_memory,
+			self.exchange,
+			self.base,
+			self.quote,
+			self.period_secs,
+			self.env.get_input_field_names(),
+			self.env.action_names,
 		)
 		# Log of the rewards obtained in each episode during calls to run()
 		self.episode_rewards = []
@@ -572,6 +583,8 @@ class QLearningAgent(object):
 		:type num_episodes: int
 		:rtype: None
 		"""
+		current_episode = 0
+
 		# Counter for the number of states we have processed.
 		count_states = self.replay_memory.get_count_states()
 		now = datetime.now()
@@ -588,7 +601,8 @@ class QLearningAgent(object):
 		# get observation as a "flat" tuple of floats
 		observation = self.env.get_next_observation()
 
-		while self.is_running:
+		while self.is_running and current_episode < num_episodes:
+			current_episode += 1
 			if datetime.now() < cycle_timestamp:
 				pause = cycle_timestamp - datetime.now()
 				sleep(pause.total_seconds())
@@ -598,7 +612,6 @@ class QLearningAgent(object):
 
 			# Determine the action that the agent must take in the game-environment.
 			# The epsilon is just used for printing further below.
-			# TODO: create 3 epsilon greedies, one for each action set.
 			actions = ()
 			for epsilon_greedy in self.epsilon_greedies:
 				i = self.epsilon_greedies.index(epsilon_greedy)

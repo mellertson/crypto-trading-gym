@@ -1,6 +1,6 @@
 import numpy as np
 from crypto_gym.models import *
-import copy, os
+import copy, os, requests, yaml, json
 
 
 __all__ = [
@@ -24,8 +24,7 @@ class NupicNetwork(object):
 	can be predicted per nupic network.
 	"""
 
-	def __init__(self, exchange, base, quote, input_fields, predicted_field,
-				 timeframe, *args, **kwargs):
+	def __init__(self, exchange, base, quote, input_fields, predicted_field, timeframe, *args, **kwargs):
 		super().__init__(*args, **kwargs)
 		self.exchange = exchange
 		self.base = base
@@ -81,6 +80,7 @@ class NupicNetwork(object):
 		:rtype: str
 		"""
 		url = f'{PREDICTOR_SERVER_BASE_URL}/new/predictor/'
+		return url
 
 	@property
 	def url_start_predictor(self):
@@ -116,9 +116,7 @@ class NupicNetwork(object):
 		return ''.join([x] + [','] * (len(y) + 1))
 
 	@classmethod
-	def _build_random_distributed_scalar_encoder(
-		cls, field_name, resolution=0.88, seed=1,
-	):
+	def _build_random_distributed_scalar_encoder(cls, field_name, resolution=0.88, seed=1,):
 		encoder = {
 			field_name: {
 				'type': 'RandomDistributedScalarEncoder',
@@ -131,9 +129,7 @@ class NupicNetwork(object):
 		return encoder
 
 	@classmethod
-	def _build_category_encoder(
-		cls, field_name, w=21, category_list='1,2,3,4,5',
-	):
+	def _build_category_encoder(cls, field_name, w=21, category_list='1,2,3,4,5',):
 		encoder = {
 			field_name: {
 				'type': 'CategoryEncoder',
@@ -176,10 +172,7 @@ class NupicNetwork(object):
 		return encoders
 
 	@classmethod
-	def _build_sdr_classifier_region(
-		cls, predicted_field, max_category_count=1000,
-		steps='1', alpha=0.1, verbosity=0
-	):
+	def _build_sdr_classifier_region(cls, predicted_field, max_category_count=1000, steps='1', alpha=0.1, verbosity=0):
 		classifier = {
 			predicted_field: {
 				'regionType': 'SDRClassifierRegion',
@@ -212,7 +205,7 @@ class NupicNetwork(object):
 
 	def send_message_new_predictor(self):
 		payload = {
-			'model': yaml_model,
+			'model': self.model,
 			'exchange': self.exchange.lower(),
 			'market': f'{self.base.lower()}{self.quote.lower()}',
 			'predicted_field': self.predicted_field.lower(),
@@ -361,8 +354,8 @@ class NupicModel(ModelBase):
 		- 5 primary network predicted outputs
 	"""
 
-	def __init__(self, exchange, base, quote, timeframe,
-				 input_field_names, action_names, *args, **kwargs):
+	def __init__(self, exchange, base, quote, period_secs, input_field_names, action_names,
+				 *args, **kwargs):
 		"""
 		Initialize a nupic predictor via HTTP requests to the `spread-predictor`
 		running inside a Flask docker container.
@@ -392,7 +385,8 @@ class NupicModel(ModelBase):
 		self.exchange = exchange
 		self.base = base
 		self.quote = quote
-		self.timeframe = timeframe
+		self.period_secs = period_secs
+		self.timeframe = f'{period_secs}s'
 		self.primary_input_fields = copy.deepcopy(input_field_names)
 		self.secondary_input_fields = copy.deepcopy(input_field_names)
 		self.secondary_input_fields.append('selected_primary_action')
@@ -410,7 +404,7 @@ class NupicModel(ModelBase):
 				quote=quote,
 				input_fields=input_field_names,
 				predicted_field=primary_action_name,
-				timeframe=timeframe,
+				timeframe=self.timeframe,
 			)
 		primary_networks.append(nupic_network)
 
@@ -581,6 +575,8 @@ class NupicModel(ModelBase):
 							desired_q_value,
 						)
 
-
+	@property
+	def name(self):
+		return f'{self.__class__.__name__}'
 
 

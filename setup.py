@@ -15,7 +15,8 @@ setup(
         'pandas>=0.24.2',
         'matplotlib>=3.1.1',
         'prettyprint>=0.1.5',
-        'requests>=2.25.1'
+        'requests>=2.25.1',
+        'PyYaml>=5.3.1'
     ],
 
     package_data={
