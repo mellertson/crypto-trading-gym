@@ -1,6 +1,8 @@
 import numpy as np
-from crypto_gym.models import *
 import copy, os, requests, yaml, json
+import collections
+from crypto_gym.models import *
+
 
 
 __all__ = [
@@ -57,19 +59,23 @@ class NupicNetwork(object):
 	def build_model_from_tempalte(self):
 		model = self.load_model_from_template()
 
-		# build and add encoders (inputs) into the model
-		encoders = []
+		# build and add encoders for the data source (inputs) into the model
+		encoders = {}
 		for field_name in self.input_fields:
 			encoder = self._build_random_distributed_scalar_encoder(field_name)
-			encoders.append(encoder)
+			encoders[field_name] = encoder
+		# build and add encoder for the predicted field (output as input)
+		encoder = self._build_category_encoder(self.predicted_field)
+		encoders[self.predicted_field] = encoder
+		# build and add encoders for the datetime field (timestamp inputs)
 		timestamp_encoders = self._build_timestamp_encoders('timestamp')
-		encoders.extend(timestamp_encoders)
+		encoders.update(timestamp_encoders)
 		model['modelParams']['sensorParams']['encoders'] = encoders
 
 		# build and add the classifier (output) into the model
-		classifiers = []
+		classifiers = {}
 		classifier = self._build_sdr_classifier_region(self.predicted_field)
-		classifiers.append(classifier)
+		classifiers[self.predicted_field] = classifier
 		model['modelParams']['classifiers'] = classifiers
 		self.model = model
 
@@ -107,7 +113,7 @@ class NupicNetwork(object):
 		return line
 
 	@classmethod
-	def line_2(cls, x, y):
+	def line_2(cls, x, y, z=None):
 		line = ''.join([x] + [', float'] * (len(y) + 1))
 		return line
 
@@ -118,70 +124,58 @@ class NupicNetwork(object):
 	@classmethod
 	def _build_random_distributed_scalar_encoder(cls, field_name, resolution=0.88, seed=1,):
 		encoder = {
-			field_name: {
-				'type': 'RandomDistributedScalarEncoder',
-				'fieldname': field_name,
-				'name': field_name,
-				'resolution': resolution,
-				'seed': seed,
-			}
+			'type': 'RandomDistributedScalarEncoder',
+			'fieldname': field_name,
+			'name': field_name,
+			'resolution': resolution,
+			'seed': seed,
 		}
 		return encoder
 
 	@classmethod
 	def _build_category_encoder(cls, field_name, w=21, category_list='1,2,3,4,5',):
 		encoder = {
-			field_name: {
-				'type': 'CategoryEncoder',
-				'fieldname': field_name,
-				'name': field_name,
-				'w': w,
-				'category_list': category_list,
-			}
+			'type': 'CategoryEncoder',
+			'fieldname': field_name,
+			'name': field_name,
+			'w': w,
+			'categoryList': category_list,
 		}
 		return encoder
 
 	@classmethod
 	def _build_timestamp_encoders(cls, field_name):
-		encoders = [
-			{
-				'time_of_day': {
-					'type': 'DateEncoder',
-					'fieldname': field_name,
-					'name': 'time_of_day',
-					'timeOfDay': [21, 1],
-				}
+		encoders = {
+			'time_of_day': {
+				'type': 'DateEncoder',
+				'fieldname': field_name,
+				'name': 'time_of_day',
+				'timeOfDay': [21, 1],
 			},
-			{
-				'weekend': {
-					'type': 'DateEncoder',
-					'fieldname': field_name,
-					'name': 'weekend',
-					'weekend': 21
-				}
+			'weekend': {
+				'type': 'DateEncoder',
+				'fieldname': field_name,
+				'name': 'weekend',
+				'weekend': 21
 			},
-			{
-				'season': {
-					'type': 'DateEncoder',
-					'fieldname': field_name,
-					'name': 'season',
-					'season': 21,
-				}
-			}
-		]
+			'season': {
+				'type': 'DateEncoder',
+				'fieldname': field_name,
+				'name': 'season',
+				'season': 21,
+			},
+		}
 		return encoders
 
 	@classmethod
 	def _build_sdr_classifier_region(cls, predicted_field, max_category_count=1000, steps='1', alpha=0.1, verbosity=0):
 		classifier = {
-			predicted_field: {
-				'regionType': 'SDRClassifierRegion',
-				'verbosity': verbosity,
-				'alpha': alpha,
-				'steps': steps,
-				'maxCategoryCount': max_category_count,
-				'implementation': 'cpp',
-			}
+			'regionType': 'SDRClassifierRegion',
+			'verbosity': verbosity,
+			'alpha': alpha,
+			'steps': steps,
+			'maxCategoryCount': max_category_count,
+			'implementation': 'cpp',
 		}
 		return classifier
 
@@ -416,7 +410,7 @@ class NupicModel(ModelBase):
 				quote=quote,
 				input_fields=self.secondary_input_fields,
 				predicted_field=amount_action_name,
-				timeframe=timeframe,
+				timeframe=self.timeframe,
 			)
 			amount_networks.append(nupic_network)
 
@@ -428,7 +422,7 @@ class NupicModel(ModelBase):
 				quote=quote,
 				input_fields=self.secondary_input_fields,
 				predicted_field=price_action_name,
-				timeframe=timeframe,
+				timeframe=self.timeframe,
 			)
 			price_networks.append(nupic_network)
 		self.networks = collections.OrderedDict()
