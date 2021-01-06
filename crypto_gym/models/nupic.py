@@ -1,5 +1,6 @@
-from . import ModelBase
-import copy
+import numpy as np
+from crypto_gym.models import *
+import copy, os
 
 
 __all__ = [
@@ -249,6 +250,16 @@ class NupicNetwork(object):
 			print(f'Prediction server started: {self}')
 
 	def send_message_predict_with_learning_off(self, timestamp, observation, action):
+		"""
+
+		:param timestamp:
+		:param observation: Input data as a "flat" tuple of floats.
+		:type observation: tuple of float
+		:param action: For example: ((0,1,2,3,4), (0,1,2), (0,1,2))
+		:type action: tuple of tuple
+		:return: A single predicted value.
+		:rtype: float
+		"""
 		payload = self._construct_predict_payload(timestamp, observation, action)
 		r = requests.post(
 			self.url_predict_with_learning_off,
@@ -295,15 +306,6 @@ class NupicNetwork(object):
 			return float(self.last_prediction_msg['prediction'])
 
 
-class NetworkLink(object):
-	""" Connects the output of a nupic network to the input of a nupic network. """
-
-	def __init__(self, output_network, input_network, *args, **kwargs):
-		super().__init__(*args, **kwargs)
-		self.output_network = output_network
-		self.input_network = input_network
-
-
 class NupicModel(ModelBase):
 	"""
 	Creates a Nupic Network for Reinforcement Learning (Q-Learning).
@@ -317,7 +319,7 @@ class NupicModel(ModelBase):
 	predict the following inputs and predicted outputs a nupic model will
 	contain 11 nupic networks.  All inputs will be fed into each of the 11
 	nupic networks.
-		Market Data Inputs:
+		Market Data Inputs (13 in total for this example):
 			order_book_level_1_price
 			order_book_level_1_amount
 			order_book_level_2_price
@@ -331,13 +333,13 @@ class NupicModel(ModelBase):
 			account_total_balance
 			account_used_balance
 			account_free_balance
-		Primary Predicted Outputs:
+		Primary Predicted Outputs (5 in total for this example):
 			reward_of_HODL
 			reward_of_market_sell
 			reward_of_market_buy
 			reward_of_limit_sell
 			reward_of_limit_buy
-		Secondary Predicted Outputs:
+		Secondary Predicted Outputs (6 in total for this example):
 			reward_of_amount_level_1
 			reward_of_amount_level_2
 			reward_of_amount_level_3
@@ -358,8 +360,6 @@ class NupicModel(ModelBase):
 		- 13 market data inputs
 		- 5 primary network predicted outputs
 	"""
-
-	# HIGH: write NupicModel.run() method.
 
 	def __init__(self, exchange, base, quote, timeframe,
 				 input_field_names, action_names, *args, **kwargs):
@@ -395,7 +395,7 @@ class NupicModel(ModelBase):
 		self.timeframe = timeframe
 		self.primary_input_fields = copy.deepcopy(input_field_names)
 		self.secondary_input_fields = copy.deepcopy(input_field_names)
-		self.secondary_input_fields.extend(action_names['primary'])
+		self.secondary_input_fields.append('selected_primary_action')
 
 		# local vars used for initialization.
 		primary_networks = []
@@ -437,29 +437,49 @@ class NupicModel(ModelBase):
 				timeframe=timeframe,
 			)
 			price_networks.append(nupic_network)
-		self.networks = {
-			'primary': primary_networks,
-			'amount': amount_networks,
-			'price': price_networks,
-		}
+		self.networks = collections.OrderedDict()
+		self.networks['primary'] = primary_networks, #: 5 primary networks
+		self.networks['amount'] = amount_networks, #: 3 amount networks
+		self.networks['price'] = price_networks, #: 3 price networks
 
-	def get_predicted_actions(self, timestamp, observation):
+	def get_selected_action(self, q_values):
 		"""
-		Get the estimated Q-values for the given states from the Nupic predictor.
+		Get the "selected action" by this model from given `q_values`.
 
-		The output of this function is an array of Q-value-arrays.
-		There is a Q-value for each possible action in the game-environment.
-		So the output is a 3-dim array of Open AI discrete shapes:
-			[spaces.Discrete(x), spaces.Discrete(y), spaces.Discrete(z)]
+		:param q_values:
+		:type q_values: tuple of float
+
+		:rtype: int
+		"""
+		q_value = np.max(q_values)
+		selected_action = q_values.index(q_value) + 1
+		return selected_action
+
+	def get_q_values(self, timestamp, observation):
+		"""
+		Get predicted Q-values for a given observation from this Nupic model.
 
 		:param timestamp:
 		:type timestamp: datetime.datetime
 		:param observation:
+			A flat list of observations.  Meaning a list of floats.
 		:type observation: list of float
+
+		:returns: q_values (aka the rewards predicted by this model).
+	 		The output of this function is an array of Q-value-arrays.
+			There is a Q-value for each possible action in the game-environment.
+			So the output is a 3-dim array of Open AI discrete shapes:
+				[spaces.Discrete(x), spaces.Discrete(y), spaces.Discrete(z)]
+
+		 	To be more clear, a more concrete example follows.  Note, for sake
+		 	of the following example all q-values are given as 0.5.
+			For example: ((0.5,0.5,0.5,0.5,0.5), (0.5,0.5,0.5), (0.5,0.5,0.5))
+		:rtype: tuple of tuple
 		"""
 		primary_q_values = ()
 		amount_q_values = ()
 		price_q_values = ()
+		secondary_observations = (o for o in observation)
 
 		# predict primary actions
 		for primary_network in self.networks['primary']:
@@ -470,16 +490,15 @@ class NupicModel(ModelBase):
 			)
 			primary_q_values.append(prediction)
 
-		# build observations for "amount" and "price" networks.
-		secondary_observations = (o for o in observation)
-		for q_value in primary_q_values:
-			secondary_observations.append(q_value)
+		# add the "selected primary action" to the secondary observations.
+		selected_primary_action = self.get_selected_action(primary_q_values)
+		secondary_observations.append(selected_primary_action)
 
 		# predict "amount" actions
 		for amount_network in self.networks['amount']:
 			prediction = amount_network.send_message_predict_with_learning_off(
 				timestamp,
-				observation,
+				secondary_observations,
 				0, # just use zero while network is not learning.
 			)
 			amount_q_values.append(prediction)
@@ -488,55 +507,80 @@ class NupicModel(ModelBase):
 		for price_network in self.networks['price']:
 			prediction = price_network.send_message_predict_with_learning_off(
 				timestamp,
-				observation,
+				secondary_observations,
 				0, # just use zero while network is not learning.
 			)
 			price_q_values.append(prediction)
-		return (primary_q_values, amount_q_values, primary_q_values)
+		return (primary_q_values, amount_q_values, price_q_values)
 
-	def optimize(self, replay_memory, timestamp, observation, ):
+	def optimize(self, replay_memories, timestamp):
 		"""
-		Optimize the Neural Network by sampling states and Q-values
-		from the replay-memory.
+		Optimize the Nupic networks by feeding in replay memories and
+		observations into each network with learning turned on.
 
-		The original DeepMind paper performed one optimization iteration
-		after processing each new state of the game-environment. This is
-		an un-natural way of doing optimization of Neural Networks.
+		------------------------------------------------------------------------
+		NOTE: replay_memory.q_values should contain the adjusted q-values,
+		which means the q-values the nupic model should have predicted.  In
+		other words, the q-values contain the "desired prediction", so just
+		feed them into the nupic model with learning turned on.
+		------------------------------------------------------------------------
 
-		So instead we perform a full optimization run every time the
-		Replay Memory is full (or it is filled to the desired fraction).
-		This also gives more efficient use of a GPU for the optimization.
+		:param replay_memories:
+		:type replay_memories: list of crypto_gym.agents.ReplayMemory
 
-		The problem is that this may over-fit the Neural Network to whatever
-		is in the replay-memory. So we use several tricks to try and adapt
-		the number of optimization iterations.
-
-		:param min_epochs:
-			Minimum number of optimization epochs. One epoch corresponds
-			to the replay-memory being used once. However, as the batches
-			are sampled randomly and biased somewhat, we may not use the
-			whole replay-memory. This number is just a convenient measure.
-
-		:param max_epochs:
-			Maximum number of optimization epochs.
-
-		:param batch_size:
-			Size of each random batch sampled from the replay-memory.
-
-		:param loss_limit:
-			Optimization continues until the average loss-value of the
-			last 100 batches is below this value (or max_epochs is reached).
-
-		:param learning_rate:
-			Learning-rate to use for the optimizer.
+		:param timestamp:
+		:type timestamp: datetime.datetime
 		"""
-		raise NotImplementedError(
-			'connect this method to the Nupic predictor using HTTP POST request.'
-		)
-		# CURRENT: send observation, and Q-values from replay memory to nupic model.
-		#  NOTE: replay_memory.q_values should contain the adjusted q-values, which means
-		#  	the q-values the nupic model should have predicted.  In other words, the
-		#   q-values contain the "desired prediction", so just feed them into
-		#   the nupic model with learning turned on.
+		# initialize the actions selected by the "primary" networks.
+		selected_primary_actions = []
+		rp_index = list(self.networks.keys()).index(network_type)
+		replay_memory = replay_memories[rp_index]
+		for network in networks:
+			for i in range(len(replay_memory.num_used)):
+				# extract q-values from replay memory
+				q_values = replay_memory.q_values[i]
+				# convert the primary q-value and save it for when we
+				#  train the "secondary" networks below.
+				selected_primary_actions.append(
+					self.get_selected_action(q_values)
+				)
+
+		# train the "primary", "amount", and "price" networks.
+		for network_type, networks in self.networks.items():
+			rp_index = list(self.networks.keys()).index(network_type)
+			replay_memory = replay_memories[rp_index]
+			for network in networks:
+				q_value_index = networks.index(network)
+				for i in range(len(replay_memory.num_used)):
+					# extract observation and q-values from replay memory.
+					observation = replay_memory.states[i]
+					q_values = replay_memory.q_values[i]
+
+					# select the "desired q-value", which corresponds to the
+					# index of the network, because the networks and q-values
+					# should have the same structure and be in the same order.
+					# See NINJA-115 for more information.
+					desired_q_value = q_values[q_value_index]
+					if network_type == 'primary':
+						# train the "primray" network.
+						network.send_message_predict_with_learning_on(
+							timestamp,
+							observation,
+							desired_q_value,
+						)
+					else:
+						# add the "selected primary action" to the secondary observations.
+						secondary_observations = copy.deepcopy(observation)
+						selected_primary_action = selected_primary_actions[i]
+						secondary_observations.append(selected_primary_action)
+
+						# train the "secondary" network.
+						network.send_message_predict_with_learning_on(
+							timestamp,
+							secondary_observations,
+							desired_q_value,
+						)
+
+
 
 

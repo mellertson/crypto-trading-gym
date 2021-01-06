@@ -77,11 +77,10 @@ class CryptoEnv(gym.Env):
 		price_action_names = []
 		for price_action_name in self._price_actions:
 			price_action_names.append(price_action_name)
-		action_names = {
-			'primary': primary_action_names,
-			'amount': amount_action_names,
-			'price': price_action_names,
-		}
+		action_names = collections.OrderedDict()
+		action_names['primary'] = primary_action_names
+		action_names['amount'] = amount_action_names
+		action_names['price'] = price_action_names
 		return action_names
 
 	def seed(self, seed=None):
@@ -144,15 +143,19 @@ class CryptoEnv(gym.Env):
 		"""
 		# update the last total balance so the reward is calculated correctly.
 		self.last_total_balance = self.account_balance_total
+
 		# get all "data sources" from the REST API server and cache locally.
 		order_book = self.fetch_order_book_data()
 		trades = self.fetch_trade_data()
 		account_balance = self.fetch_account_balance_data()
+
 		# concatenate dataframes together
 		observation = pd.concat([order_book, trades, account_balance], axis=1)
+
 		# slice out 1st row & convert to float data types
 		observation = pd.to_numeric(observation.iloc[0])
 		assert (observation.space == self.observation_space.space)
+
 		return observation
 
 	def reset(self):

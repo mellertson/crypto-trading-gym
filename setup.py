@@ -9,6 +9,7 @@ setup(
     author_email='mike@cybertron.ninja',
 
     install_requires=[
+        'pillow<=7.2.0',
         'gym>=0.12.5',
         'numpy>=1.16.4',
         'pandas>=0.24.2',

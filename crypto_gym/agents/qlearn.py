@@ -7,21 +7,51 @@ from crypto_gym import models
 
 
 __all__ = [
+	'ActionFlattener',
+	'ReplayMemory',
+	'EpsilonGreedy',
 	'QLearningAgent',
 ]
 
 
-class ReplayMemory:
+class ActionFlattener(object):
 	"""
-	The replay-memory holds many previous states of the game-environment.
-	This helps stabilize training of the Neural Network because the data
-	is more diverse when sampled over thousands of different states.
+	Flattens and restores a tuple of tuples remembering its structure.
+
+	:ivar actions: The "flattened" actions.
+	:type actions: tuple of float
+	:ivar original_actions: The original, "unflattened" actions.
+	:type original_actions: tuple of tuple
 	"""
 
-	def __init__(self, state_shape, size, num_actions, discount_factor=0.97):
+	def __init__(self, actions, *args, **kwargs):
+		super().__init__(*args, **kwargs)
+		self.lengths = self.get_lengths(actions)
+		self.original_actions = actions
+		self.actions = self.flatten(actions)
+
+	@classmethod
+	def get_lengths(cls, actions):
+		lengths = []
+		for subactions in actions:
+			lengths.append(len(subactions))
+		return lengths
+
+	@classmethod
+	def flatten(cls, actions):
+		flattened_actions = []
+		for subactions in actions:
+			flattened_actions.extend(subactions)
+		return flattened_actions
+
+
+class ReplayMemory:
+	""" The replay memory used specifically by the Nupic Q-Learning Agent. """
+
+	def __init__(self, num_input_fields, size, num_actions, discount_factor=0.97):
 		"""
 
-		:param state_shape:
+		:param num_input_fields:
 			Shape of the state-array.
 
 		:param size:
@@ -35,20 +65,20 @@ class ReplayMemory:
 		"""
 
 		# Array for the previous states of the game-environment.
-		self.states = np.zeros(shape=[size] + state_shape, dtype=np.uint8)
+		self.states = np.zeros(shape=[size, num_input_fields], dtype=np.float64)
 
 		# Array for the Q-values corresponding to the states.
-		self.q_values = np.zeros(shape=[size, num_actions], dtype=np.float)
+		self.q_values = np.zeros(shape=[size, num_actions], dtype=np.float64)
 
 		# Array for the Q-values before being updated.
 		# This is used to compare the Q-values before and after the update.
-		self.q_values_old = np.zeros(shape=[size, num_actions], dtype=np.float)
+		self.q_values_old = np.zeros(shape=[size, num_actions], dtype=np.float64)
 
-		# Actions taken for each of the states in the memory.
+		# Action indices taken for each of the states in the memory.
 		self.actions = np.zeros(shape=size, dtype=np.int)
 
 		# Rewards observed for each of the states in the memory.
-		self.rewards = np.zeros(shape=size, dtype=np.float)
+		self.rewards = np.zeros(shape=size, dtype=np.float64)
 
 		# Whether the life had ended in each state of the game-environment.
 		self.end_life = np.zeros(shape=size, dtype=np.bool)
@@ -94,26 +124,25 @@ class ReplayMemory:
 		Add an observed state from the game-environment, along with the
 		estimated Q-values, action taken, observed reward, etc.
 
-		:param state:
-			Current state of the game-environment.
-			This is the output of the MotionTracer-class.
+		:param state: Current state of the game-environment.
+		:type state: tuple of float
 
-		:param q_values:
-			The estimated Q-values for the state.
+		:param q_values: The estimated Q-values for the state.
+		:type q_values: tuple of float
 
-		:param action:
-			The action taken by the agent in this state of the game.
+		:param action: The action taken by the agent in this state of the game.
+		:type action: tuple of float
 
-		:param reward:
-			The reward that was observed from taking this action
+		:param reward: The reward that was observed from taking this action
 			and moving to the next state.
+		:type reward: float
 
-		:param end_life:
-			Boolean whether the agent has lost a life in this state.
+		:param end_life: True if the agent has lost a life in this state.
+		:type end_life: bool
 
-		:param end_episode:
-			Boolean whether the agent has lost all lives aka. game over
-			aka. end of episode.
+		:param end_episode: True if the agent has lost all lives
+			aka. "game over" aka. "end of episode".
+		:type end_episode: bool
 		"""
 
 		if not self.is_full():
@@ -132,7 +161,11 @@ class ReplayMemory:
 
 			# Note that the reward is limited. This is done to stabilize
 			# the training of the Neural Network.
-			self.rewards[k] = np.clip(reward, -1.0, 1.0)
+			# Mike E Note: I don't think we should clip the reward, because
+			# we are not playing an Atari game, and the original author's
+			# code was optimized for an Atary game.
+			# self.rewards[k] = np.clip(reward, -1.0, 1.0)
+			pass
 
 	def update_all_q_values(self):
 		"""
@@ -185,149 +218,6 @@ class ReplayMemory:
 			self.q_values[k, action] = action_value
 
 		self.print_statistics()
-
-	def prepare_sampling_prob(self, batch_size=128):
-		"""
-		Prepare the probability distribution for random sampling of states
-		and Q-values for use in training of the Neural Network.
-
-		The probability distribution is just a simple binary split of the
-		replay-memory based on the estimation errors of the Q-values.
-		The idea is to create a batch of samples that are balanced somewhat
-		evenly between Q-values that the Neural Network already knows how to
-		estimate quite well because they have low estimation errors, and
-		Q-values that are poorly estimated by the Neural Network because
-		they have high estimation errors.
-
-		The reason for this balancing of Q-values with high and low estimation
-		errors, is that if we train the Neural Network mostly on data with
-		high estimation errors, then it will tend to forget what it already
-		knows and hence become over-fit so the training becomes unstable.
-		"""
-
-		# Get the errors between the Q-values that were estimated using
-		# the Neural Network, and the Q-values that were updated with the
-		# reward that was actually observed when an action was taken.
-		err = self.estimation_errors[0:self.num_used]
-
-		# Create an index of the estimation errors that are low.
-		idx = err < self.error_threshold
-		self.idx_err_lo = np.squeeze(np.where(idx))
-
-		# Create an index of the estimation errors that are high.
-		self.idx_err_hi = np.squeeze(np.where(np.logical_not(idx)))
-
-		# Probability of sampling Q-values with high estimation errors.
-		# This is either set to the fraction of the replay-memory that
-		# has high estimation errors - or it is set to 0.5. So at least
-		# half of the batch has high estimation errors.
-		prob_err_hi = len(self.idx_err_hi) / self.num_used
-		prob_err_hi = max(prob_err_hi, 0.5)
-
-		# Number of samples in a batch that have high estimation errors.
-		self.num_samples_err_hi = int(prob_err_hi * batch_size)
-
-		# Number of samples in a batch that have low estimation errors.
-		self.num_samples_err_lo = batch_size - self.num_samples_err_hi
-
-	def random_batch(self):
-		"""
-		Get a random batch of states and Q-values from the replay-memory.
-		You must call prepare_sampling_prob() before calling this function,
-		which also sets the batch-size.
-
-		The batch has been balanced so it contains states and Q-values
-		that have both high and low estimation errors for the Q-values.
-		This is done to both speed up and stabilize training of the
-		Neural Network.
-		"""
-
-		# Random index of states and Q-values in the replay-memory.
-		# These have LOW estimation errors for the Q-values.
-		idx_lo = np.random.choice(self.idx_err_lo,
-								  size=self.num_samples_err_lo,
-								  replace=False)
-
-		# Random index of states and Q-values in the replay-memory.
-		# These have HIGH estimation errors for the Q-values.
-		idx_hi = np.random.choice(self.idx_err_hi,
-								  size=self.num_samples_err_hi,
-								  replace=False)
-
-		# Combine the indices.
-		idx = np.concatenate((idx_lo, idx_hi))
-
-		# Get the batches of states and Q-values.
-		states_batch = self.states[idx]
-		q_values_batch = self.q_values[idx]
-
-		return states_batch, q_values_batch
-
-	def all_batches(self, batch_size=128):
-		"""
-		Iterator for all the states and Q-values in the replay-memory.
-		It returns the indices for the beginning and end, as well as
-		a progress-counter between 0.0 and 1.0.
-
-		This function is not currently being used except by the function
-		estimate_all_q_values() below. These two functions are merely
-		included to make it easier for you to experiment with the code
-		by showing you an easy and efficient way to loop over all the
-		data in the replay-memory.
-		"""
-
-		# Start index for the current batch.
-		begin = 0
-
-		# Repeat until all batches have been processed.
-		while begin < self.num_used:
-			# End index for the current batch.
-			end = begin + batch_size
-
-			# Ensure the batch does not exceed the used replay-memory.
-			if end > self.num_used:
-				end = self.num_used
-
-			# Progress counter.
-			progress = end / self.num_used
-
-			# Yield the batch indices and completion-counter.
-			yield begin, end, progress
-
-			# Set the start-index for the next batch to the end of this batch.
-			begin = end
-
-	def estimate_all_q_values(self, model):
-		"""
-		Estimate all Q-values for the states in the replay-memory
-		using the model / Neural Network.
-
-		Note that this function is not currently being used. It is provided
-		to make it easier for you to experiment with this code, by showing
-		you an efficient way to iterate over all the states and Q-values.
-
-		:param model:
-			Instance of the NeuralNetwork-class.
-		"""
-
-		print("Re-calculating all Q-values in replay memory ...")
-
-		# Process the entire replay-memory in batches.
-		for begin, end, progress in self.all_batches():
-			# Print progress.
-			msg = "\tProgress: {0:.0%}"
-			msg = msg.format(progress)
-			print_progress(msg)
-
-			# Get the states for the current batch.
-			states = self.states[begin:end]
-
-			# Calculate the Q-values using the Neural Network
-			# and update the replay-memory.
-			self.q_values[begin:end] = model.get_q_values(observation=states)
-
-		# Newline.
-		print()
 
 	def print_statistics(self):
 		"""Print statistics for the contents of the replay-memory."""
@@ -566,13 +456,17 @@ class QLearningAgent(object):
 		# Epsilon-greedy policy for selecting an action from the Q-values.
 		# During training the epsilon is decreased linearly over the given
 		# number of iterations. During testing the fixed epsilon is used.
-		self.epsilon_greedy = EpsilonGreedy(
-			start_value=1.0,
-			end_value=0.1,
-			num_iterations=1e6,
-			num_actions=self.num_actions,
-			epsilon_testing=0.01,
-		)
+		self.epsilon_greedies = []
+		for action_names in self.env.action_names.values():
+			self.epsilon_greedies.append(
+				EpsilonGreedy(
+					start_value=1.0,
+					end_value=0.1,
+					num_iterations=1e6,
+					num_actions=len(action_names),
+					epsilon_testing=0.01,
+				)
+			)
 
 		# TRAINING ivars
 		# The learning-rate for the optimizer decreases linearly.
@@ -613,12 +507,18 @@ class QLearningAgent(object):
 		)
 		# We only create the replay-memory when we are training the agent,
 		# because it requires a lot of RAM.
-		self.replay_memory = ReplayMemory(
-			size=200000,
-			num_actions=self.num_actions,
-			discount_factor=self.discount_factor,
-		)
-		# instantiate the nupic/tensorflow model
+		state_shape = [13] #: number of input fields in each observation
+		self.replay_memories = []
+		for action_names in self.env.action_names.values():
+			replay_memory = ReplayMemory(
+				num_input_fields=state_shape,
+				size=120, #: cycles before re-training networks.
+				num_actions=len(action_names),
+				discount_factor=self.discount_factor,
+			)
+			self.replay_memories.append(replay_memory)
+
+		# instantiate the nupic model
 		model_class = getattr(models, model_class_name, None)
 		if model_class is None:
 			raise ValueError(f'{model_class_name} class not found in {models}')
@@ -675,7 +575,7 @@ class QLearningAgent(object):
 		# Counter for the number of states we have processed.
 		count_states = self.replay_memory.get_count_states()
 		now = datetime.now()
-		next_cycle_timestamp = datetime(
+		cycle_timestamp = datetime(
 			now.year,
 			now.month,
 			now.day,
@@ -683,24 +583,33 @@ class QLearningAgent(object):
 			now.minute,
 			now.second,
 		)
-		next_cycle_timestamp = next_cycle_timestamp - self.period_td
+		cycle_timestamp = cycle_timestamp - self.period_td
+
+		# get observation as a "flat" tuple of floats
 		observation = self.env.get_next_observation()
 
 		while self.is_running:
-			if datetime.now() < next_cycle_timestamp:
-				pause = next_cycle_timestamp - datetime.now()
+			if datetime.now() < cycle_timestamp:
+				pause = cycle_timestamp - datetime.now()
 				sleep(pause.total_seconds())
-			q_values = self.model.get_predicted_actions(next_cycle_timestamp, observation)
-			next_cycle_timestamp = next_cycle_timestamp + self.period_td
+			# get q-values as tuple of tuple
+			q_values = self.model.get_q_values(cycle_timestamp, observation)
+			cycle_timestamp = cycle_timestamp + self.period_td
+
 			# Determine the action that the agent must take in the game-environment.
 			# The epsilon is just used for printing further below.
-			action, epsilon = self.epsilon_greedy.get_action(
-				q_values=q_values,
-				iteration=count_states,
-			)
+			# TODO: create 3 epsilon greedies, one for each action set.
+			actions = ()
+			for epsilon_greedy in self.epsilon_greedies:
+				i = self.epsilon_greedies.index(epsilon_greedy)
+				action, epsilon = epsilon_greedy.get_action(
+					q_values=q_values[i],
+					iteration=count_states,
+				)
+				actions.append(action)
 
 			# Take a step in the game-environment using the given action.
-			observation, reward, end_episode, info = self.env.step(action=action)
+			observation, reward, end_episode, info = self.env.step(action=actions)
 
 			# TODO: calculate if the agent has "lost a life" in `end_life` var.
 			end_life = False
@@ -708,23 +617,27 @@ class QLearningAgent(object):
 			if self.render:
 				self.env.render()
 
-			# Add the state of the game-environment to the replay-memory.
-			self.replay_memory.add(state=observation,
-								   q_values=q_values,
-								   action=action,
-								   reward=reward,
-								   end_life=end_life,
-								   end_episode=end_episode)
+			# Add the state to the replay-memories instances.
+			for replay_memory in self.replay_memories:
+				replay_memory.add(
+					state=observation,
+					q_values=q_values,
+					action=action,
+					reward=reward,
+					end_life=end_life,
+					end_episode=end_episode,
+				)
 
 			# How much of the replay-memory should be used.
 			use_fraction = self.replay_fraction.get_value(iteration=count_states)
 
 			# When the replay-memory is sufficiently full.
-			if self.replay_memory.is_full() \
-				or self.replay_memory.used_fraction() > use_fraction:
+			if self.replay_memories[0].is_full() \
+				or self.replay_memories[0].used_fraction() > use_fraction:
 
 				# Update all Q-values in the replay-memory through a backwards-sweep.
-				self.replay_memory.update_all_q_values()
+				for replay_memory in self.replay_memories:
+					replay_memory.update_all_q_values()
 
 				# Get the control parameters for optimization of the Neural Network.
 				# These are changed linearly depending on the state-counter.
@@ -734,13 +647,9 @@ class QLearningAgent(object):
 
 				# Perform an optimization run on the Neural Network so as to
 				# improve the estimates for the Q-values.
-				# This will sample random batches from the replay-memory.
-				# HIGH: write NupicModel.optimize() method.
 				self.model.optimize(
-
-					learning_rate=learning_rate,
-					loss_limit=loss_limit,
-					max_epochs=max_epochs,
+					self.replay_memories,
+					cycle_timestamp,
 				)
 
 				# Save a checkpoint of the Neural Network so we can reload it.
