@@ -1,8 +1,8 @@
 import numpy as np
 import copy, os, requests, yaml, json
 import collections
+from datetime import datetime, timedelta, timedelta
 from crypto_gym.models import *
-
 
 
 __all__ = [
@@ -36,6 +36,7 @@ class NupicNetwork(object):
 		self.timeframe = timeframe
 		self.predictor_id = None
 		self.last_prediction_msg = {}
+		self.last_prediction = None
 		self.model_template_filename = os.path.join(
 			NUPIC_MODELS_DIR,
 			'nupic-model-v1.yaml',
@@ -183,8 +184,11 @@ class NupicNetwork(object):
 		"""
 
 		:type timestamp: str | datetime.datetime
-		:type observation: tuple
-		:type action: tuple
+		:param observation: The input data.
+			For example: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+		:type observation: tuple of float
+		:param action: A specific action, we want the network to predict.
+		:type action: float
 		:rtype: str
 		"""
 		if isinstance(timestamp, datetime):
@@ -193,8 +197,7 @@ class NupicNetwork(object):
 			line = str(timestamp)
 		for x in observation:
 			line += ', ' + str(x)
-		for x in action:
-			line += ', ' + str(x)
+		line += ', ' + str(action)
 		return line
 
 	def send_message_new_predictor(self):
@@ -238,12 +241,13 @@ class NupicNetwork(object):
 
 	def send_message_predict_with_learning_off(self, timestamp, observation, action):
 		"""
+		Make a prediction with learning turned off.
 
 		:param timestamp:
 		:param observation: Input data as a "flat" tuple of floats.
 		:type observation: tuple of float
-		:param action: For example: ((0,1,2,3,4), (0,1,2), (0,1,2))
-		:type action: tuple of tuple
+		:param action: A specific action, we want the network to predict.
+		:type action: float
 		:return: A single predicted value.
 		:rtype: float
 		"""
@@ -258,11 +262,24 @@ class NupicNetwork(object):
 				f'POST to {self.url_predict_with_learning_off} '
 				f'returned: {r.status_code}\n\n{r.text}')
 		else:
-			self.last_prediction_msg = json.loads(r.text.decode('utf-8'))['message'][0]
-			print(f'Prediction received: {self}')
-			return self.last_prediction_msg
+			response = json.loads(r.content.decode('utf-8'))
+			print(f'Prediction received: {response}')
+			self.last_prediction_msg = response['message'][0]
+			self.last_prediction = self.last_prediction_msg['prediction']
+			return self.last_prediction
 
 	def send_message_predict_with_learning_on(self, timestamp, observation, action):
+		"""
+		Make a prediction with learning turned on.
+
+		:param timestamp:
+		:param observation: Input data as a "flat" tuple of floats.
+		:type observation: tuple of float
+		:param action: A specific action, we want the network to predict.
+		:type action: float
+		:return: A single predicted value.
+		:rtype: float
+		"""
 		payload = self._construct_predict_payload(timestamp, observation, action)
 		r = requests.post(
 			self.url_predict_with_learning_on,
@@ -274,9 +291,11 @@ class NupicNetwork(object):
 				f'POST to {self.url_predict_with_learning_on} '
 				f'returned: {r.status_code}\n\n{r.text}')
 		else:
-			self.last_prediction_msg = json.loads(r.text.decode('utf-8'))['message'][0]
-			print(f'Training prediction received: {self}')
-			return self.last_prediction_msg
+			response = json.loads(r.content.decode('utf-8'))
+			print(f'Training prediction received: {response}')
+			self.last_prediction_msg = response['message'][0]
+			self.last_prediction = self.last_prediction_msg['prediction']
+			return self.last_prediction
 
 	def send_message_stop_predictor(self):
 		r = requests.post(self.url_stop_predictor)
@@ -400,7 +419,7 @@ class NupicModel(ModelBase):
 				predicted_field=primary_action_name,
 				timeframe=self.timeframe,
 			)
-		primary_networks.append(nupic_network)
+			primary_networks.append(nupic_network)
 
 		# instantiate "amount" networks.
 		for amount_action_name in action_names['amount']:
@@ -425,10 +444,13 @@ class NupicModel(ModelBase):
 				timeframe=self.timeframe,
 			)
 			price_networks.append(nupic_network)
-		self.networks = collections.OrderedDict()
-		self.networks['primary'] = primary_networks, #: 5 primary networks
-		self.networks['amount'] = amount_networks, #: 3 amount networks
-		self.networks['price'] = price_networks, #: 3 price networks
+		self.networks = collections.OrderedDict(
+			{
+				'primary': primary_networks, #: 5 primary networks
+				'amount': amount_networks, #: 3 amount networks
+				'price': price_networks, #: 3 price networks
+			}
+		)
 
 	def get_selected_action(self, q_values):
 		"""
@@ -437,10 +459,20 @@ class NupicModel(ModelBase):
 		:param q_values:
 		:type q_values: tuple of float
 
+		:returns: The action returned assumes the possible actions are 0-indexed.
+			For example, given the following q_values:
+				(0.0, 0.9, 0.1, 0.1, 0.1)
+			And assuming the following actions:
+				['HODL', 'market_sell', 'market_buy', 'limit_sell', 'limit_buy']
+			The selected action would be 'market_sell' or the integer 1.
 		:rtype: int
 		"""
-		q_value = np.max(q_values)
-		selected_action = q_values.index(q_value) + 1
+		selected_action = q_values[0]
+		index = 0
+		for q_value in q_values:
+			if q_value > selected_action:
+				selected_action = q_value
+				index = q_values.index(q_value)
 		return selected_action
 
 	def get_q_values(self, timestamp, observation):
@@ -464,10 +496,10 @@ class NupicModel(ModelBase):
 			For example: ((0.5,0.5,0.5,0.5,0.5), (0.5,0.5,0.5), (0.5,0.5,0.5))
 		:rtype: tuple of tuple
 		"""
-		primary_q_values = ()
-		amount_q_values = ()
-		price_q_values = ()
-		secondary_observations = (o for o in observation)
+		primary_q_values = []
+		amount_q_values = []
+		price_q_values = []
+		secondary_observations = copy.deepcopy(observation)
 
 		# predict primary actions
 		for primary_network in self.networks['primary']:
@@ -499,6 +531,9 @@ class NupicModel(ModelBase):
 				0, # just use zero while network is not learning.
 			)
 			price_q_values.append(prediction)
+		primary_q_values = tuple(primary_q_values)
+		amount_q_values = tuple(amount_q_values)
+		price_q_values = tuple(price_q_values)
 		return (primary_q_values, amount_q_values, price_q_values)
 
 	def optimize(self, replay_memories, timestamp):
@@ -572,5 +607,6 @@ class NupicModel(ModelBase):
 	@property
 	def name(self):
 		return f'{self.__class__.__name__}'
+
 
 

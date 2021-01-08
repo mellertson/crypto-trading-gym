@@ -513,11 +513,10 @@ class QLearningAgent(object):
 		)
 		# We only create the replay-memory when we are training the agent,
 		# because it requires a lot of RAM.
-		state_shape = 13 #: number of input fields in each observation
 		self.replay_memories = []
 		for action_names in self.env.action_names.values():
 			replay_memory = ReplayMemory(
-				num_input_fields=state_shape,
+				num_input_fields=len(self.env.get_input_field_names()),
 				size=120, #: cycles before re-training networks.
 				num_actions=len(action_names),
 				discount_factor=self.discount_factor,
@@ -552,7 +551,7 @@ class QLearningAgent(object):
 	def is_running(self):
 		_is_running = None
 		with self._is_running_lock:
-			copy.deepcopy(self._is_running)
+			_is_running = copy.deepcopy(self._is_running)
 		return _is_running
 
 	@is_running.setter
@@ -586,7 +585,11 @@ class QLearningAgent(object):
 		current_episode = 0
 
 		# Counter for the number of states we have processed.
-		count_states = self.replay_memory.get_count_states()
+		count_states = self.replay_memories[0].get_count_states()
+
+		# get observation as a "flat" tuple of floats
+		observation = self.env.get_next_observation()
+
 		now = datetime.now()
 		cycle_timestamp = datetime(
 			now.year,
@@ -598,13 +601,10 @@ class QLearningAgent(object):
 		)
 		cycle_timestamp = cycle_timestamp - self.period_td
 
-		# get observation as a "flat" tuple of floats
-		observation = self.env.get_next_observation()
-
 		while self.is_running and current_episode < num_episodes:
 			current_episode += 1
-			if datetime.now() < cycle_timestamp:
-				pause = cycle_timestamp - datetime.now()
+			if now < cycle_timestamp:
+				pause = cycle_timestamp - now
 				sleep(pause.total_seconds())
 			# get q-values as tuple of tuple
 			q_values = self.model.get_q_values(cycle_timestamp, observation)
@@ -612,7 +612,7 @@ class QLearningAgent(object):
 
 			# Determine the action that the agent must take in the game-environment.
 			# The epsilon is just used for printing further below.
-			actions = ()
+			actions = []
 			for epsilon_greedy in self.epsilon_greedies:
 				i = self.epsilon_greedies.index(epsilon_greedy)
 				action, epsilon = epsilon_greedy.get_action(
@@ -620,9 +620,11 @@ class QLearningAgent(object):
 					iteration=count_states,
 				)
 				actions.append(action)
+			actions = tuple(actions)
+			assert(len(actions) == 3)
 
 			# Take a step in the game-environment using the given action.
-			observation, reward, end_episode, info = self.env.step(action=actions)
+			observation, reward, end_episode, info = self.env.step(actions=actions)
 
 			# TODO: calculate if the agent has "lost a life" in `end_life` var.
 			end_life = False
@@ -632,9 +634,11 @@ class QLearningAgent(object):
 
 			# Add the state to the replay-memories instances.
 			for replay_memory in self.replay_memories:
+				i = self.replay_memories.index(replay_memory)
+				_q_values = q_values[i]
 				replay_memory.add(
 					state=observation,
-					q_values=q_values,
+					q_values=_q_values,
 					action=action,
 					reward=reward,
 					end_life=end_life,
