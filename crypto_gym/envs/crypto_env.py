@@ -35,6 +35,7 @@ class CryptoEnv(gym.Env):
 		self.current_episode = 0
 		self.last_step_dt = None
 		self.observation = None
+		self.exchange_rate = 0.0
 		# define the action space
 		self._primary_actions = [
 			'hodl',
@@ -151,6 +152,7 @@ class CryptoEnv(gym.Env):
 				data=order_book,
 				index=[end_date],
 			)
+			self.exchange_rate = float(order_book['order_book_ask_price_lvl_1'][0])
 			return self.order_book_df
 
 	def fetch_trade_data(self):
@@ -253,12 +255,12 @@ class CryptoEnv(gym.Env):
 
 		:param action_index:
 		:type action_index: int
-		:return: The order amount to use when placing the order on the exchange.
-		:rtype: float
+		:return: The order amount in USD to place on the exchange.
+		:rtype: int
 		"""
 		action_key = f'amount_level_{action_index + 1}'
 		amount_pct = self._amount_actions[action_key]
-		amount = self.account_balance_free * amount_pct
+		amount = int(self.account_balance_free * amount_pct * self.exchange_rate)
 		return amount
 
 	def translate_price_action(self, action, side):
@@ -270,14 +272,23 @@ class CryptoEnv(gym.Env):
 		:param side: Either 'buy' or 'sell'.
 		:type side: str
 		:return: The order price to use when placing the order on the exchange.
-		:rtype: float
+		:rtype: int
 		"""
 		# increment because action is zero indexed.
 		price_level = action
 		ob_side = 'ask' if side == 'sell' else 'bid'
 		col_name = f'order_book_{ob_side}_price_lvl_{price_level}'
-		price = float(self.order_book_df[col_name][0])
-		return price
+		if col_name in self.order_book_df:
+			price = float(self.order_book_df[col_name][0])
+		else:
+			price = 0
+		# frac = int(f'{price:.1f}'[-1])
+		# if frac >= 5:
+		# 	frac = 5
+		# else:
+		# 	frac = 0
+		# price = float(f'{int(price)}.{frac}')
+		return int(price)
 
 	@property
 	def account_balance_free(self):
@@ -358,6 +369,7 @@ class CryptoEnv(gym.Env):
 		if order_type is not None:
 			amount = self.translate_amount_action(actions[1])
 			price = self.translate_price_action(actions[2], side)
+
 			url, payload = self.build_order_url_and_payload(
 				order_type,
 				side,
@@ -423,4 +435,5 @@ class CryptoEnv(gym.Env):
 			return rendered
 		else:
 			super().render(mode=mode)
+
 

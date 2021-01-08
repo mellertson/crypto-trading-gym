@@ -433,10 +433,13 @@ class QLearningAgent(object):
 
 	:ivar model: Either a nupic or tensorflow model, which makes predictions.
 	:type model: crypto_gym.models.NupicModel
+
+	:ivar rp_mem_size: Cycles before optimizing the network using Q-Learning.
+	:type rp_mem_size: int
 	"""
 
 	def __init__(self, env_name, exchange, base, quote, period_secs, ob_levels,
-				 base_url, discount_factor=0.97, render=False):
+				 base_url, discount_factor=0.97, render=False, rp_mem_size=120):
 		self.env_name = env_name
 		self.exchange = exchange
 		self.base = base
@@ -447,6 +450,7 @@ class QLearningAgent(object):
 		self.base_url = base_url
 		self.discount_factor = discount_factor
 		self.render = render
+		self.rp_mem_size = rp_mem_size
 		# instantiate Open AI Gym environment
 		# self.env = gym.make(env_name)
 		self.env = CryptoEnv(
@@ -517,7 +521,7 @@ class QLearningAgent(object):
 		for action_names in self.env.action_names.values():
 			replay_memory = ReplayMemory(
 				num_input_fields=len(self.env.get_input_field_names()),
-				size=120, #: cycles before re-training networks.
+				size=rp_mem_size,
 				num_actions=len(action_names),
 				discount_factor=self.discount_factor,
 			)
@@ -635,11 +639,10 @@ class QLearningAgent(object):
 			# Add the state to the replay-memories instances.
 			for replay_memory in self.replay_memories:
 				i = self.replay_memories.index(replay_memory)
-				_q_values = q_values[i]
 				replay_memory.add(
 					state=observation,
-					q_values=_q_values,
-					action=action,
+					q_values=q_values[i],
+					action=actions[i],
 					reward=reward,
 					end_life=end_life,
 					end_episode=end_episode,
@@ -675,5 +678,8 @@ class QLearningAgent(object):
 
 				# Reset the replay-memory. This throws away all the data we have
 				# just gathered, so we will have to fill the replay-memory again.
-				self.replay_memory.reset()
+				for replay_memory in self.replay_memories:
+					replay_memory.reset()
+
+
 

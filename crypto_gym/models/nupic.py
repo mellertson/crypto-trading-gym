@@ -554,19 +554,12 @@ class NupicModel(ModelBase):
 		:param timestamp:
 		:type timestamp: datetime.datetime
 		"""
-		# initialize the actions selected by the "primary" networks.
+		# initialize the actions selected by the "primary" networks, so they
+		#  can be fed into the "amount" and "price" networks.
 		selected_primary_actions = []
-		rp_index = list(self.networks.keys()).index(network_type)
-		replay_memory = replay_memories[rp_index]
-		for network in networks:
-			for i in range(len(replay_memory.num_used)):
-				# extract q-values from replay memory
-				q_values = replay_memory.q_values[i]
-				# convert the primary q-value and save it for when we
-				#  train the "secondary" networks below.
-				selected_primary_actions.append(
-					self.get_selected_action(q_values)
-				)
+		replay_memory = replay_memories[0]
+		for i in range(replay_memory.num_used):
+			selected_primary_actions.append(replay_memory.actions[i])
 
 		# train the "primary", "amount", and "price" networks.
 		for network_type, networks in self.networks.items():
@@ -574,7 +567,7 @@ class NupicModel(ModelBase):
 			replay_memory = replay_memories[rp_index]
 			for network in networks:
 				q_value_index = networks.index(network)
-				for i in range(len(replay_memory.num_used)):
+				for i in range(replay_memory.num_used):
 					# extract observation and q-values from replay memory.
 					observation = replay_memory.states[i]
 					q_values = replay_memory.q_values[i]
@@ -585,7 +578,7 @@ class NupicModel(ModelBase):
 					# See NINJA-115 for more information.
 					desired_q_value = q_values[q_value_index]
 					if network_type == 'primary':
-						# train the "primray" network.
+						# train the "primary" network.
 						network.send_message_predict_with_learning_on(
 							timestamp,
 							observation,
@@ -594,8 +587,10 @@ class NupicModel(ModelBase):
 					else:
 						# add the "selected primary action" to the secondary observations.
 						secondary_observations = copy.deepcopy(observation)
-						selected_primary_action = selected_primary_actions[i]
-						secondary_observations.append(selected_primary_action)
+						secondary_observations = np.append(
+							secondary_observations,
+							[selected_primary_actions[i]],
+						)
 
 						# train the "secondary" network.
 						network.send_message_predict_with_learning_on(

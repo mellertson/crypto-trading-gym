@@ -85,7 +85,7 @@ class ModelBase(object):
 		"""Close the TensorFlow session."""
 		pass
 
-	def save_checkpoint(count_states):
+	def save_checkpoint(self, count_states):
 		"""
 		Serialize the model to the Django database so it can be loaded later.
 		"""

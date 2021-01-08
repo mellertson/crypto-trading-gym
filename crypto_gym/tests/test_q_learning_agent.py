@@ -23,6 +23,7 @@ class Test_QLearnAgent_class(unittest.TestCase):
 			cls.period_secs,
 			cls.ob_levels,
 			cls.base_url,
+			rp_mem_size=20,
 		)
 
 	def setUp(self):
@@ -66,7 +67,7 @@ class Test_QLearnAgent_class(unittest.TestCase):
 		self.agent.is_running = True
 
 		# test
-		self.agent.run(num_episodes=1)
+		self.agent.run(num_episodes=6)
 
 		# verify
 		# TODO: verify something here
@@ -75,6 +76,5 @@ class Test_QLearnAgent_class(unittest.TestCase):
 
 if __name__ == '__main__':
 	unittest.main()
-
 
 
