@@ -654,6 +654,9 @@ class QLearningAgent(object):
 			# When the replay-memory is sufficiently full.
 			if self.replay_memories[0].is_full() \
 				or self.replay_memories[0].used_fraction() > use_fraction:
+				self.print_line('=')
+				print(f'Training the network with Q-Learning!')
+				self.print_line('=')
 
 				# Update all Q-values in the replay-memory through a backwards-sweep.
 				for replay_memory in self.replay_memories:
@@ -681,5 +684,12 @@ class QLearningAgent(object):
 				for replay_memory in self.replay_memories:
 					replay_memory.reset()
 
+			self.print_line('x')
+			print(f'End of episode: {current_episode}')
+			self.print_line('x')
+
+	def print_line(self, x):
+		line = f'{x}' * 100
+		print(f'\n{line}\n')
 
 
