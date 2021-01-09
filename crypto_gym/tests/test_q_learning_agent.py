@@ -25,12 +25,12 @@ class Test_QLearnAgent_class(unittest.TestCase):
 			cls.base_url,
 			rp_mem_size=120,
 		)
-		self.num_episodes = 60 * 24
+		cls.num_episodes = 60 * 24
 
 	def setUp(self):
 		super().setUp()
 
-	def test_agent_should_have_5_primary_networs(self):
+	def test_agent_should_have_5_primary_networks(self):
 		expected = len(self.agent.env._primary_actions)
 		self.assertEqual(5, expected)
 		self.assertEqual(
@@ -68,7 +68,7 @@ class Test_QLearnAgent_class(unittest.TestCase):
 		self.agent.is_running = True
 
 		# test
-		self.agent.run(num_episodes=60*60)
+		self.agent.run(num_episodes=self.num_episodes)
 
 		# verify
 		# TODO: verify something here

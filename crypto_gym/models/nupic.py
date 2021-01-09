@@ -191,8 +191,17 @@ class NupicNetwork(object):
 		:type action: float
 		:rtype: str
 		"""
+
 		if isinstance(timestamp, datetime):
-			line = timestamp.isoformat()
+			cycle_timestamp = datetime(
+				timestamp.year,
+				timestamp.month,
+				timestamp.day,
+				timestamp.hour,
+				timestamp.minute,
+				timestamp.second,
+			)
+			line = cycle_timestamp.isoformat()
 		else:
 			line = str(timestamp)
 		for x in observation:
