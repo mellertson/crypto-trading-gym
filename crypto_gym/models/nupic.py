@@ -169,7 +169,7 @@ class NupicNetwork(object):
 		return encoders
 
 	@classmethod
-	def _build_sdr_classifier_region(cls, predicted_field, max_category_count=1000, steps='1', alpha=0.1, verbosity=0):
+	def _build_sdr_classifier_region(cls, predicted_field, max_category_count=1000, steps='1', alpha=0.1, verbosity=1):
 		classifier = {
 			'regionType': 'SDRClassifierRegion',
 			'verbosity': verbosity,
@@ -534,6 +534,11 @@ class NupicModel(ModelBase):
 		primary_q_values = tuple(primary_q_values)
 		amount_q_values = tuple(amount_q_values)
 		price_q_values = tuple(price_q_values)
+		self.print_line('-')
+		print(f'Primary Observations: {observation}')
+		print(f'Secondary Observations: {secondary_observations}')
+		print(f'Q-Values: {(primary_q_values, amount_q_values, price_q_values)}')
+		self.print_line('-')
 		return (primary_q_values, amount_q_values, price_q_values)
 
 	def optimize(self, replay_memories, timestamp):
@@ -602,6 +607,13 @@ class NupicModel(ModelBase):
 	@property
 	def name(self):
 		return f'{self.__class__.__name__}'
+
+	def print_line(self, x):
+		line = f'{x}' * 100
+		print(f'\n{line}\n')
+
+
+
 
 
 

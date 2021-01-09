@@ -12,7 +12,7 @@ class Test_QLearnAgent_class(unittest.TestCase):
 		cls.exchange = 'bitmex'
 		cls.base = 'BTC'
 		cls.quote = 'USD'
-		cls.period_secs = 15
+		cls.period_secs = 1
 		cls.ob_levels = 3
 		cls.base_url = 'http://0.0.0.0:8000'
 		cls.agent = QLearningAgent(
@@ -23,8 +23,9 @@ class Test_QLearnAgent_class(unittest.TestCase):
 			cls.period_secs,
 			cls.ob_levels,
 			cls.base_url,
-			rp_mem_size=20,
+			rp_mem_size=120,
 		)
+		self.num_episodes = 60 * 24
 
 	def setUp(self):
 		super().setUp()
@@ -67,7 +68,7 @@ class Test_QLearnAgent_class(unittest.TestCase):
 		self.agent.is_running = True
 
 		# test
-		self.agent.run(num_episodes=6)
+		self.agent.run(num_episodes=60*60)
 
 		# verify
 		# TODO: verify something here
@@ -76,5 +77,13 @@ class Test_QLearnAgent_class(unittest.TestCase):
 
 if __name__ == '__main__':
 	unittest.main()
+
+
+
+
+
+
+
+
 
 

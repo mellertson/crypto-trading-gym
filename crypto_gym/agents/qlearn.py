@@ -594,25 +594,18 @@ class QLearningAgent(object):
 		# get observation as a "flat" tuple of floats
 		observation = self.env.get_next_observation()
 
-		now = datetime.now()
-		cycle_timestamp = datetime(
-			now.year,
-			now.month,
-			now.day,
-			now.hour,
-			now.minute,
-			now.second,
-		)
-		cycle_timestamp = cycle_timestamp - self.period_td
+		next_episode_time = datetime.now() - self.period_td
 
 		while self.is_running and current_episode < num_episodes:
 			current_episode += 1
-			if now < cycle_timestamp:
-				pause = cycle_timestamp - now
+			if next_episode_time < datetime.now():
+				pause = datetime.now() - next_episode_time
+				print(f'sleep {pause.total_seconds()} seconds until next episode time...')
 				sleep(pause.total_seconds())
+			# re-init next episode time
+			next_episode_time = datetime.now() + self.period_td
 			# get q-values as tuple of tuple
-			q_values = self.model.get_q_values(cycle_timestamp, observation)
-			cycle_timestamp = cycle_timestamp + self.period_td
+			q_values = self.model.get_q_values(next_episode_time, observation)
 
 			# Determine the action that the agent must take in the game-environment.
 			# The epsilon is just used for printing further below.
@@ -672,7 +665,7 @@ class QLearningAgent(object):
 				# improve the estimates for the Q-values.
 				self.model.optimize(
 					self.replay_memories,
-					cycle_timestamp,
+					next_episode_time,
 				)
 
 				# Save a checkpoint of the Neural Network so we can reload it.
@@ -691,5 +684,9 @@ class QLearningAgent(object):
 	def print_line(self, x):
 		line = f'{x}' * 100
 		print(f'\n{line}\n')
+
+
+
+
 
 
