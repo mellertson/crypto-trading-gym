@@ -598,10 +598,7 @@ class QLearningAgent(object):
 
 		while self.is_running and current_episode < num_episodes:
 			current_episode += 1
-			if next_episode_time < datetime.now():
-				pause = datetime.now() - next_episode_time
-				print(f'sleep {pause.total_seconds()} seconds until next episode time...')
-				sleep(pause.total_seconds())
+
 			# get q-values as tuple of tuple
 			q_values = self.model.get_q_values(next_episode_time, observation)
 
@@ -676,11 +673,12 @@ class QLearningAgent(object):
 					replay_memory.reset()
 
 			self.print_line('x')
+			# re-init next episode time
+			next_episode_time = next_episode_time + self.period_td
+			print(f'Sleeping {self.period_td.total_seconds()} seconds...')
 			print(f'End of episode: {current_episode}')
 			self.print_line('x')
-
-			# re-init next episode time
-			next_episode_time = datetime.now() + self.period_td
+			sleep(self.period_td.total_seconds())
 
 	def print_line(self, x):
 		line = f'{x}' * 100
