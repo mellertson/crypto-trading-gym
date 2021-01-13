@@ -1,3 +1,4 @@
+from random import uniform
 import numpy as np
 import copy, os, requests, yaml, json
 import collections
@@ -37,6 +38,7 @@ class NupicNetwork(object):
 		self.predictor_id = None
 		self.last_prediction_msg = {}
 		self.last_prediction = None
+		self.model_was_optimized = False
 		self.model_template_filename = os.path.join(
 			NUPIC_MODELS_DIR,
 			'nupic-model-v1.yaml',
@@ -257,9 +259,12 @@ class NupicNetwork(object):
 		:type observation: tuple of float
 		:param action: A specific action, we want the network to predict.
 		:type action: float
-		:return: A single predicted value.
+		:return: A single predicted value.  But, will return a random number
+			until a prediction is made with learning on.
 		:rtype: float
 		"""
+		if not self.model_was_optimized:
+			return uniform(0.0, 1.0)
 		payload = self._construct_predict_payload(timestamp, observation, action)
 		r = requests.post(
 			self.url_predict_with_learning_off,
@@ -289,6 +294,8 @@ class NupicNetwork(object):
 		:return: A single predicted value.
 		:rtype: float
 		"""
+		if not self.model_was_optimized:
+			self.model_was_optimized = True
 		payload = self._construct_predict_payload(timestamp, observation, action)
 		r = requests.post(
 			self.url_predict_with_learning_on,
@@ -515,7 +522,7 @@ class NupicModel(ModelBase):
 			prediction = primary_network.send_message_predict_with_learning_off(
 				timestamp,
 				observation,
-				0, # just use zero while network is not learning.
+				1, # just use zero while network is not learning.
 			)
 			primary_q_values.append(prediction)
 
@@ -528,7 +535,7 @@ class NupicModel(ModelBase):
 			prediction = amount_network.send_message_predict_with_learning_off(
 				timestamp,
 				secondary_observations,
-				0, # just use zero while network is not learning.
+				1, # just use zero while network is not learning.
 			)
 			amount_q_values.append(prediction)
 
@@ -537,7 +544,7 @@ class NupicModel(ModelBase):
 			prediction = price_network.send_message_predict_with_learning_off(
 				timestamp,
 				secondary_observations,
-				0, # just use zero while network is not learning.
+				1, # just use zero while network is not learning.
 			)
 			price_q_values.append(prediction)
 		primary_q_values = tuple(primary_q_values)
@@ -620,6 +627,7 @@ class NupicModel(ModelBase):
 	def print_line(self, x):
 		line = f'{x}' * 100
 		print(f'\n{line}\n')
+
 
 
 

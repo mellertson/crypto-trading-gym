@@ -33,7 +33,7 @@ class CryptoEnv(gym.Env):
 		self.ob_levels = ob_levels
 		self.base_url = base_url #: e.g. 'http://localhost:8000'
 		self.current_episode = 0
-		self.last_step_dt = None
+		self.last_step_dt = datetime.now()
 		self.observation = None
 		self.exchange_rate = 0.0
 		# define the action space
@@ -138,7 +138,6 @@ class CryptoEnv(gym.Env):
 
 		:rtype: pandas.DataFrame
 		"""
-		self.last_step_dt = datetime.now(tz=timezone.utc)
 		end_date = self.last_step_dt + self.period_td
 		url = f'{self.base_url}/api/market_data/order_book/' \
 			f'{self.exchange}/' \
@@ -161,7 +160,6 @@ class CryptoEnv(gym.Env):
 
 		:rtype: pandas.DataFrame
 		"""
-		self.last_step_dt = datetime.now(tz=timezone.utc)
 		end_date = self.last_step_dt + self.period_td
 		url = f'{self.base_url}/api/market_data/trade/' \
 			f'{self.exchange}/' \
@@ -184,7 +182,6 @@ class CryptoEnv(gym.Env):
 
 		:rtype: pandas.DataFrame
 		"""
-		self.last_step_dt = datetime.now(tz=timezone.utc)
 		end_date = self.last_step_dt + self.period_td
 		url = f'{self.base_url}/api/account/balance/' \
 			f'{self.exchange}/' \
@@ -435,5 +432,8 @@ class CryptoEnv(gym.Env):
 			return rendered
 		else:
 			super().render(mode=mode)
+
+
+
 
 

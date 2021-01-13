@@ -1,6 +1,9 @@
 import unittest
+import pandas as pd
+from datetime import datetime, timedelta
 from . import *
 from ..agents.qlearn import *
+from ..envs.crypto_env import CryptoEnv
 
 
 class Test_QLearnAgent_class(unittest.TestCase):
@@ -75,9 +78,55 @@ class Test_QLearnAgent_class(unittest.TestCase):
 		pass
 
 
+class Test_CrytoEnvironment_class(unittest.TestCase):
+
+	def setUp(self):
+		super().setUp()
+		self.env_name = 'QLearningAgent'
+		self.exchange = 'bitmex'
+		self.base = 'BTC'
+		self.quote = 'USD'
+		self.period_secs = 60 * 30
+		self.ob_levels = 3
+		self.base_url = 'http://0.0.0.0:8000'
+		self.env = CryptoEnv(
+			self.exchange,
+			self.base,
+			self.quote,
+			self.period_secs,
+			self.ob_levels,
+			self.base_url,
+		)
+		self.env.last_step_dt = datetime.now() - self.env.period_td
+
+	def test_fetch_trade_data(self):
+		""" Test GET trade data from Django REST API. """
+		# test
+		trade_df = self.env.fetch_trade_data()
+
+		# verify
+		self.assertIsInstance(trade_df, pd.DataFrame)
+
+	def test_fetch_account_data(self):
+		""" Test GET account balance data from Django REST API. """
+		# test
+		account_bal_df = self.env.fetch_account_balance_data()
+
+		# verify
+		self.assertIsInstance(account_bal_df, pd.DataFrame)
+
+	def test_fetch_order_book_data(self):
+		""" Test GET order_book data from Django REST API. """
+		# test
+		order_book_df = self.env.fetch_order_book_data()
+
+		# verify
+		self.assertIsInstance(order_book_df, pd.DataFrame)
+
+
+
 if __name__ == '__main__':
 	unittest.main()
-
 
 
 
