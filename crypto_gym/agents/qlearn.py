@@ -596,7 +596,10 @@ class QLearningAgent(object):
 
 		next_episode_time = datetime.now() - self.period_td
 
-		while self.is_running and current_episode < num_episodes:
+		while self.is_running:
+			if num_episodes is not None:
+				if current_episode > num_episodes:
+					break
 			current_episode += 1
 
 			# get q-values as tuple of tuple

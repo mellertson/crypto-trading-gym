@@ -71,7 +71,7 @@ class Test_QLearnAgent_class(unittest.TestCase):
 		self.agent.is_running = True
 
 		# test
-		self.agent.run(num_episodes=self.num_episodes)
+		self.agent.run(num_episodes=None)
 
 		# verify
 		# TODO: verify something here
@@ -122,7 +122,6 @@ class Test_CrytoEnvironment_class(unittest.TestCase):
 
 		# verify
 		self.assertIsInstance(order_book_df, pd.DataFrame)
-
 
 
 if __name__ == '__main__':
