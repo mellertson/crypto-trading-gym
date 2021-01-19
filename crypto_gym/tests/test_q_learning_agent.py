@@ -26,7 +26,7 @@ class Test_QLearnAgent_class(unittest.TestCase):
 			cls.period_secs,
 			cls.ob_levels,
 			cls.base_url,
-			rp_mem_size=120,
+			rp_mem_size=500,
 		)
 		cls.num_episodes = 60 * 24
 

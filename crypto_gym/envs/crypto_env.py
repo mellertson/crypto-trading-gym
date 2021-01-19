@@ -65,14 +65,13 @@ class CryptoEnv(gym.Env):
 		self._order_book_length = ob_levels * 4 #: buy & sell price & amount per ob level
 		self._trade_length = 4 #: buy & sell price & amount
 		self._account_bal_length = 3 #: total, used, & free balances
-		self.shape = tuple([
-			self._order_book_length +
-			self._trade_length +
-			self._account_bal_length])
+		self._position_bal_length = 3 #: total, used, & free balances
+		self.shape = tuple([len(self.get_input_field_names())])
 		self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=self.shape)
 		self.order_book_df = None
 		self.trade_df = None
 		self.account_bal_df = None
+		self.position_bal_df = None
 		self.last_total_balance = None
 		self.orders = []
 
@@ -111,9 +110,18 @@ class CryptoEnv(gym.Env):
 			'used_balance': '<str:account.used_balance>',
 			'free_balance': '<str:account.free_balance>',
 		}
+		position_balance = {
+			'position_status': '0',
+			'position_side': '0',
+			'position_entry_price': '0',
+			'position_break_even_price': '0',
+			'position_liquidation_price': '0',
+			'position_current_amount': '0',
+		}
 		fields = list(order_book_data.keys())
 		fields.extend(trade_data.keys())
 		fields.extend(account_balance_data.keys())
+		fields.extend(position_balance.keys())
 		return fields
 
 	def build_action_names(self):
@@ -197,6 +205,28 @@ class CryptoEnv(gym.Env):
 			)
 			return self.account_bal_df
 
+	def fetch_position_balance_data(self):
+		"""
+		Get position balance data via HTTP GET request and cache locally.
+
+		:rtype: pandas.DataFrame
+		"""
+		end_date = self.last_step_dt + self.period_td
+		url = f'{self.base_url}/api/position/algo_balance/' \
+			f'{self.exchange}/' \
+			f'{self.base}/' \
+			f'{self.quote}/'
+		r = requests.get(url)
+		if r.status_code != 200:
+			print(f'ERROR: {r.status_code} recieved by GET from: {url}')
+		else:
+			position_balance = json.loads(r.content.decode('utf-8'))
+			self.position_bal_df = pd.DataFrame(
+				data=position_balance,
+				index=[end_date],
+			)
+			return self.position_bal_df
+
 	def get_next_observation(self):
 		"""
 		Get the next observation from the REST API server and cache locally.
@@ -210,11 +240,13 @@ class CryptoEnv(gym.Env):
 		order_book = self.fetch_order_book_data()
 		trade = self.fetch_trade_data()
 		account_balance = self.fetch_account_balance_data()
+		position_balance = self.fetch_position_balance_data()
 
 		# concatenate dataframes together
 		observation = list(order_book.iloc[0])
 		observation.extend(list(trade.iloc[0]))
 		observation.extend(list(account_balance.iloc[0]))
+		observation.extend(list(position_balance.iloc[0]))
 		assert (np.shape(observation) == self.observation_space.shape)
 
 		return observation
