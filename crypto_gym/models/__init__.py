@@ -1,13 +1,11 @@
 import requests, json, copy
 from datetime import datetime
-from .nupic import *
-from .tensforflow import *
+import os
+
 
 
 __all__ = [
 	'ModelBase',
-	'TensorflowModel',
-	'NupicModel',
 	'PREDICTOR_SERVER_BASE_URL',
 	'set_predictor_server_base_url',
 ]
@@ -25,17 +23,14 @@ class ModelBase(object):
 
 	# HIGH: finish writing the q-learning ModelBase class.
 
-	def __init__(self, num_actions, replay_memory, exchange,
-				 market, predicted_field, *args, **kwargs):
+	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
-		self.model_filename = os.path.join(MODEL_DIR, 'nupic-model-v1.yaml')
-		self.send_new_predictor_message()
 
 	@property
 	def name(self):
 		return f'{self.__class__.__name__}'
 
-	def get_predicted_actions(self, observation):
+	def get_q_values(self, observation):
 		"""
 		Calculate and return the estimated Q-values for the given states.
 
@@ -90,10 +85,11 @@ class ModelBase(object):
 		"""Close the TensorFlow session."""
 		pass
 
-	def save_checkpoint(count_states):
+	def save_checkpoint(self, count_states):
 		"""
 		Serialize the model to the Django database so it can be loaded later.
 		"""
-		print(f'TODO: implement {self.name}.save_checkpoint()!')
+		# TODO: implement .save_checkpoint() method
+		pass
 
 

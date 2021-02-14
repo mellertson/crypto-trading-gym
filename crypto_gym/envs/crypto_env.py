@@ -11,11 +11,19 @@ from .trading_env import TradingEnv
 
 
 class CryptoEnv(gym.Env):
-	""" An Open AI Gym environment to trade crypto-currency on an exchange. """
+	"""
+	An Open AI Gym environment to trade crypto-currency on an exchange.
+
+	:ivar base_url: The URL to the Django REST API server, which is used to
+		get order book and trade data.  And also to place trades with the
+		upstream exchange.
+		For example: 'http://localhost:8000'
+	:type base_url: str
+	"""
 	metadata = {'render.modes': ['ascii']}
 
-	def __init__(self, exchange, base, quote, period_secs, ob_levels,
-				 window_size, base_url, max_episodes, *args, **kwargs):
+	def __init__(self, exchange, base, quote, period_secs, ob_levels, base_url,
+				 *args, **kwargs):
 		# ivars
 		self.exchange = exchange
 		self.base = base
@@ -23,15 +31,14 @@ class CryptoEnv(gym.Env):
 		self.period_secs = period_secs
 		self.period_td = timedelta(seconds=period_secs)
 		self.ob_levels = ob_levels
-		self.window_size = window_size
 		self.base_url = base_url #: e.g. 'http://localhost:8000'
-		self.max_episodes = max_episodes
 		self.current_episode = 0
-		self.last_step_dt = None
+		self.last_step_dt = datetime.now()
 		self.observation = None
+		self.exchange_rate = 0.0
 		# define the action space
 		self._primary_actions = [
-			'HODL',
+			'hodl',
 			'market_sell',
 			'market_buy',
 			'limit_sell',
@@ -40,9 +47,9 @@ class CryptoEnv(gym.Env):
 			# 'liquidate',
 		]
 		self._amount_actions = collections.OrderedDict()
-		self._amount_actions['amount_level_1'] = 0.001 #: meaning 0.1% of account.free_balance.
-		self._amount_actions['amount_level_2'] = 0.002 #: meaning 0.2% of account.free_balance.
-		self._amount_actions['amount_level_3'] = 0.003 #: meaning 0.3% of account.free_balance.
+		self._amount_actions['amount_level_1'] = 0.002 #: meaning 0.5% of account.free_balance.
+		self._amount_actions['amount_level_2'] = 0.004 #: meaning 0.7% of account.free_balance.
+		self._amount_actions['amount_level_3'] = 0.006 #: meaning 0.9% of account.free_balance.
 		self._price_actions = [
 			'price_level_1',
 			'price_level_2',
@@ -58,16 +65,64 @@ class CryptoEnv(gym.Env):
 		self._order_book_length = ob_levels * 4 #: buy & sell price & amount per ob level
 		self._trade_length = 4 #: buy & sell price & amount
 		self._account_bal_length = 3 #: total, used, & free balances
-		self.shape = (
-			self._order_book_length +
-			self._trade_length +
-			self._account_bal_length)
+		self._position_bal_length = 3 #: total, used, & free balances
+		self.shape = tuple([len(self.get_input_field_names())])
 		self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=self.shape)
 		self.order_book_df = None
 		self.trade_df = None
 		self.account_bal_df = None
+		self.position_bal_df = None
 		self.last_total_balance = None
 		self.orders = []
+
+	def get_input_field_names(self):
+		"""
+		Return a list of field names from the data source.
+
+		# HIGH: build input field names dynamically from the Django JSON data.
+
+		:rtype: list of str
+		"""
+		order_book_data = {
+			'order_book_ask_price_lvl_1': ['101.0000000000'],
+			'order_book_ask_amount_lvl_1': ['0.1010000000'],
+			'order_book_bid_price_lvl_1': ['100.0000000000'],
+			'order_book_bid_amount_lvl_1': ['0.1000000000'],
+
+			'order_book_ask_price_lvl_2': ['102.0000000000'],
+			'order_book_ask_amount_lvl_2': ['0.1020000000'],
+			'order_book_bid_price_lvl_2': ['99.0000000000'],
+			'order_book_bid_amount_lvl_2': ['0.0990000000'],
+
+			'order_book_ask_price_lvl_3': ['103.0000000000'],
+			'order_book_ask_amount_lvl_3': ['0.1030000000'],
+			'order_book_bid_price_lvl_3': ['98.0000000000'],
+			'order_book_bid_amount_lvl_3': ['0.0980000000'],
+		}
+		trade_data = {
+			'trade_sell_price': '20000.0000000000',
+			'trade_sell_amount': '100.0000000000',
+			'trade_buy_price': '21000.0000000000',
+			'trade_buy_amount': '200.0000000000',
+		}
+		account_balance_data = {
+			'total_balance': '<str:account.total_balance>',
+			'used_balance': '<str:account.used_balance>',
+			'free_balance': '<str:account.free_balance>',
+		}
+		position_balance = {
+			'position_status': '0',
+			'position_side': '0',
+			'position_entry_price': '0',
+			'position_break_even_price': '0',
+			'position_liquidation_price': '0',
+			'position_current_amount': '0',
+		}
+		fields = list(order_book_data.keys())
+		fields.extend(trade_data.keys())
+		fields.extend(account_balance_data.keys())
+		fields.extend(position_balance.keys())
+		return fields
 
 	def build_action_names(self):
 		primary_action_names = copy.deepcopy(self._primary_actions)
@@ -77,11 +132,10 @@ class CryptoEnv(gym.Env):
 		price_action_names = []
 		for price_action_name in self._price_actions:
 			price_action_names.append(price_action_name)
-		action_names = {
-			'primary': primary_action_names,
-			'amount': amount_action_names,
-			'price': price_action_names,
-		}
+		action_names = collections.OrderedDict()
+		action_names['primary'] = primary_action_names
+		action_names['amount'] = amount_action_names
+		action_names['price'] = price_action_names
 		return action_names
 
 	def seed(self, seed=None):
@@ -92,13 +146,21 @@ class CryptoEnv(gym.Env):
 
 		:rtype: pandas.DataFrame
 		"""
-		r = requests.get(
-			f'{self.base_url}/api/market_data/order_book/'
-			f'{self.exchange}/'
-			f'{self.base}/{self.quote}/{self.ob_levels}/')
-		order_book = json.loads(r.content.decode('utf-8'))
-		self.order_book_df = pd.DataFrame(data=order_book)
-		return self.order_book_df
+		end_date = self.last_step_dt + self.period_td
+		url = f'{self.base_url}/api/market_data/order_book/' \
+			f'{self.exchange}/' \
+			f'{self.base}/{self.quote}/{self.ob_levels}/'
+		r = requests.get(url)
+		if r.status_code != 200:
+			print(f'ERROR: {r.status_code} recieved by GET from: {url}')
+		else:
+			order_book = json.loads(r.content.decode('utf-8'))
+			self.order_book_df = pd.DataFrame(
+				data=order_book,
+				index=[end_date],
+			)
+			self.exchange_rate = float(order_book['order_book_ask_price_lvl_1'][0])
+			return self.order_book_df
 
 	def fetch_trade_data(self):
 		"""
@@ -106,17 +168,21 @@ class CryptoEnv(gym.Env):
 
 		:rtype: pandas.DataFrame
 		"""
-		self.last_step_dt = datetime.now(tz=timezone.utc)
 		end_date = self.last_step_dt + self.period_td
-		r = requests.get(
-			f'{self.base_url}/api/market_data/trade/'
-			f'{self.exchange}/'
-			f'{self.base}/{self.quote}/'
+		url = f'{self.base_url}/api/market_data/trade/' \
+			f'{self.exchange}/' \
+			f'{self.base}/{self.quote}/' \
 			f'{self.last_step_dt.isoformat()}/{end_date.isoformat()}/'
-		)
-		trades = json.loads(r.content.decode('utf-8'))
-		self.trade_df = pd.DataFrame(data=trades)
-		return self.trade_df
+		r = requests.get(url)
+		if r.status_code != 200:
+			print(f'ERROR: {r.status_code} recieved by GET from: {url}')
+		else:
+			trades = json.loads(r.content.decode('utf-8'))
+			self.trade_df = pd.DataFrame(
+				data=trades,
+				index=[end_date],
+			)
+			return self.trade_df
 
 	def fetch_account_balance_data(self):
 		"""
@@ -124,17 +190,42 @@ class CryptoEnv(gym.Env):
 
 		:rtype: pandas.DataFrame
 		"""
-		self.last_step_dt = datetime.now(tz=timezone.utc)
 		end_date = self.last_step_dt + self.period_td
-		r = requests.get(
-			f'{self.base_url}/api/account/balance/'
-			f'{self.exchange}/'
-			f'{self.base}/{self.quote}/'
-			f'{self.last_step_dt.isoformat()}/{end_date.isoformat()}/'
-		)
-		account_balance = json.loads(r.content.decode('utf-8'))
-		self.account_bal_df = pd.DataFrame(data=account_balance)
-		return self.account_bal_df
+		url = f'{self.base_url}/api/account/balance/' \
+			f'{self.exchange}/' \
+			f'{self.base}/'
+		r = requests.get(url)
+		if r.status_code != 200:
+			print(f'ERROR: {r.status_code} recieved by GET from: {url}')
+		else:
+			account_balance = json.loads(r.content.decode('utf-8'))
+			self.account_bal_df = pd.DataFrame(
+				data=account_balance,
+				index=[end_date],
+			)
+			return self.account_bal_df
+
+	def fetch_position_balance_data(self):
+		"""
+		Get position balance data via HTTP GET request and cache locally.
+
+		:rtype: pandas.DataFrame
+		"""
+		end_date = self.last_step_dt + self.period_td
+		url = f'{self.base_url}/api/position/algo_balance/' \
+			f'{self.exchange}/' \
+			f'{self.base}/' \
+			f'{self.quote}/'
+		r = requests.get(url)
+		if r.status_code != 200:
+			print(f'ERROR: {r.status_code} recieved by GET from: {url}')
+		else:
+			position_balance = json.loads(r.content.decode('utf-8'))
+			self.position_bal_df = pd.DataFrame(
+				data=position_balance,
+				index=[end_date],
+			)
+			return self.position_bal_df
 
 	def get_next_observation(self):
 		"""
@@ -144,15 +235,20 @@ class CryptoEnv(gym.Env):
 		"""
 		# update the last total balance so the reward is calculated correctly.
 		self.last_total_balance = self.account_balance_total
+
 		# get all "data sources" from the REST API server and cache locally.
 		order_book = self.fetch_order_book_data()
-		trades = self.fetch_trade_data()
+		trade = self.fetch_trade_data()
 		account_balance = self.fetch_account_balance_data()
+		position_balance = self.fetch_position_balance_data()
+
 		# concatenate dataframes together
-		observation = pd.concat([order_book, trades, account_balance], axis=1)
-		# slice out 1st row & convert to float data types
-		observation = pd.to_numeric(observation.iloc[0])
-		assert (observation.space == self.observation_space.space)
+		observation = list(order_book.iloc[0])
+		observation.extend(list(trade.iloc[0]))
+		observation.extend(list(account_balance.iloc[0]))
+		observation.extend(list(position_balance.iloc[0]))
+		assert (np.shape(observation) == self.observation_space.shape)
+
 		return observation
 
 	def reset(self):
@@ -170,7 +266,7 @@ class CryptoEnv(gym.Env):
 		:returns: Formatted like this: [Order.type, Order.side]
 		:rtype: list of str
 		"""
-		action_name = self._price_actions.index(action)
+		action_name = self._primary_actions[action]
 		if action_name == 'market_sell':
 			return ['market', 'sell']
 		elif action_name == 'market_buy':
@@ -182,17 +278,18 @@ class CryptoEnv(gym.Env):
 		else:
 			return [None, None]
 
-	def translate_amount_action(self, action):
+	def translate_amount_action(self, action_index):
 		"""
 		Translate an amount action index into an order amount.
 
-		:param action:
-		:type action: int
-		:return: The order amount to use when placing the order on the exchange.
-		:rtype: float
+		:param action_index:
+		:type action_index: int
+		:return: The order amount in USD to place on the exchange.
+		:rtype: int
 		"""
-		amount_pct = self._amount_actions[action]
-		amount = self.account_balance_free * amount_pct
+		action_key = f'amount_level_{action_index + 1}'
+		amount_pct = self._amount_actions[action_key]
+		amount = int(self.account_balance_free * amount_pct * self.exchange_rate)
 		return amount
 
 	def translate_price_action(self, action, side):
@@ -204,14 +301,23 @@ class CryptoEnv(gym.Env):
 		:param side: Either 'buy' or 'sell'.
 		:type side: str
 		:return: The order price to use when placing the order on the exchange.
-		:rtype: float
+		:rtype: int
 		"""
 		# increment because action is zero indexed.
-		price_level = action + 1
+		price_level = action
 		ob_side = 'ask' if side == 'sell' else 'bid'
 		col_name = f'order_book_{ob_side}_price_lvl_{price_level}'
-		price = float(self.order_book_df[col_name][0])
-		return price
+		if col_name in self.order_book_df:
+			price = float(self.order_book_df[col_name][0])
+		else:
+			price = 0
+		# frac = int(f'{price:.1f}'[-1])
+		# if frac >= 5:
+		# 	frac = 5
+		# else:
+		# 	frac = 0
+		# price = float(f'{int(price)}.{frac}')
+		return int(price)
 
 	@property
 	def account_balance_free(self):
@@ -277,32 +383,47 @@ class CryptoEnv(gym.Env):
 		"""
 		return self.last_total_balance - self.account_balance_total
 
-	def execute_action(self, action):
+	def execute_action(self, actions):
 		"""
-		Execute the given action.
+		Execute the given actions.
 
-		:param action:
+		:param actions: The actions to execute in this environment. The actions
+			for this environment are:
+			(primary_action, acmount_action, price_action)
+		:type actions: list of int
+
 		:return:
 		"""
-		type, side = self.translate_primary_action(action[0])
-		if type is not None:
-			amount = self.translate_amount_action(action[1])
-			price = self.translate_price_action(action[3])
-			url, payload = self.build_place_order_url()
-			r = requests.post(url, json=payload)
-			order = json.loads(r.content.decode('utf-8'))
-			self.orders.append(order)
+		order_type, side = self.translate_primary_action(actions[0])
+		if order_type is not None:
+			amount = self.translate_amount_action(actions[1])
+			price = self.translate_price_action(actions[2], side)
 
-	def step(self, action):
+			url, payload = self.build_order_url_and_payload(
+				order_type,
+				side,
+				price,
+				amount
+			)
+			if price > 0 and amount > 0:
+				r = requests.post(url, json=payload)
+				if r.status_code != 201:
+					print(f'ERROR: {r.status_code} recieved by GET from: {url}')
+				else:
+					order = json.loads(r.content.decode('utf-8'))
+					print(f'Order Placed: {order}')
+					self.orders.append(order)
+
+	def step(self, actions):
 		"""
 		Execute action in the environment and return the next state.
 
 		Accepts an action and returns a tuple (observation, reward, done, info).
 
-		:param action: The action to execute in this environment. The action
+		:param actions: The actions to execute in this environment. The actions
 			for this environment are:
 			(primary_action, acmount_action, price_action)
-		:type action: list of int
+		:type actions: list of int
 
 		Returns:
 			observation (object): agent's observation of the current environment
@@ -312,7 +433,7 @@ class CryptoEnv(gym.Env):
             info (dict): contains auxiliary diagnostic information (helpful
             	for debugging, and sometimes learning)
 		"""
-		self.execute_action(action)
+		self.execute_action(actions)
 		observation = self.get_next_observation()
 		reward = self.reward
 		done = self.done
@@ -323,7 +444,6 @@ class CryptoEnv(gym.Env):
 	def current_info(self):
 		return {
 			'current_episode': self.current_episode,
-			'max_episodes': self.max_episodes,
 			'order_book': self.order_book_df,
 			'trade': self.trade_df,
 			'account_balance': self.account_bal_df,
@@ -334,7 +454,6 @@ class CryptoEnv(gym.Env):
 			'period_secs': self.period_secs,
 			'period_td': self.period_td,
 			'ob_levels': self.ob_levels,
-			'window_size': self.window_size,
 			'orders': self.orders,
 			'reward': f'{self.reward:,.10f}',
 		}
@@ -345,4 +464,8 @@ class CryptoEnv(gym.Env):
 			return rendered
 		else:
 			super().render(mode=mode)
+
+
+
+
 

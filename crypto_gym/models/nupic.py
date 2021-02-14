@@ -1,5 +1,9 @@
-from . import ModelBase
-import copy
+from random import uniform
+import numpy as np
+import copy, os, requests, yaml, json
+import collections
+from datetime import datetime, timedelta, timedelta
+from crypto_gym.models import *
 
 
 __all__ = [
@@ -23,8 +27,7 @@ class NupicNetwork(object):
 	can be predicted per nupic network.
 	"""
 
-	def __init__(self, exchange, base, quote, input_fields, predicted_field,
-				 timeframe, *args, **kwargs):
+	def __init__(self, exchange, base, quote, input_fields, predicted_field, timeframe, *args, **kwargs):
 		super().__init__(*args, **kwargs)
 		self.exchange = exchange
 		self.base = base
@@ -34,6 +37,8 @@ class NupicNetwork(object):
 		self.timeframe = timeframe
 		self.predictor_id = None
 		self.last_prediction_msg = {}
+		self.last_prediction = None
+		self.model_was_optimized = False
 		self.model_template_filename = os.path.join(
 			NUPIC_MODELS_DIR,
 			'nupic-model-v1.yaml',
@@ -57,19 +62,23 @@ class NupicNetwork(object):
 	def build_model_from_tempalte(self):
 		model = self.load_model_from_template()
 
-		# build and add encoders (inputs) into the model
-		encoders = []
+		# build and add encoders for the data source (inputs) into the model
+		encoders = {}
 		for field_name in self.input_fields:
 			encoder = self._build_random_distributed_scalar_encoder(field_name)
-			encoders.append(encoder)
+			encoders[field_name] = encoder
+		# build and add encoder for the predicted field (output as input)
+		encoder = self._build_category_encoder(self.predicted_field)
+		encoders[self.predicted_field] = encoder
+		# build and add encoders for the datetime field (timestamp inputs)
 		timestamp_encoders = self._build_timestamp_encoders('timestamp')
-		encoders.extend(timestamp_encoders)
+		encoders.update(timestamp_encoders)
 		model['modelParams']['sensorParams']['encoders'] = encoders
 
 		# build and add the classifier (output) into the model
-		classifiers = []
+		classifiers = {}
 		classifier = self._build_sdr_classifier_region(self.predicted_field)
-		classifiers.append(classifier)
+		classifiers[self.predicted_field] = classifier
 		model['modelParams']['classifiers'] = classifiers
 		self.model = model
 
@@ -80,6 +89,7 @@ class NupicNetwork(object):
 		:rtype: str
 		"""
 		url = f'{PREDICTOR_SERVER_BASE_URL}/new/predictor/'
+		return url
 
 	@property
 	def url_start_predictor(self):
@@ -106,7 +116,7 @@ class NupicNetwork(object):
 		return line
 
 	@classmethod
-	def line_2(cls, x, y):
+	def line_2(cls, x, y, z=None):
 		line = ''.join([x] + [', float'] * (len(y) + 1))
 		return line
 
@@ -115,79 +125,60 @@ class NupicNetwork(object):
 		return ''.join([x] + [','] * (len(y) + 1))
 
 	@classmethod
-	def _build_random_distributed_scalar_encoder(
-		cls, field_name, resolution=0.88, seed=1,
-	):
+	def _build_random_distributed_scalar_encoder(cls, field_name, resolution=0.88, seed=1,):
 		encoder = {
-			field_name: {
-				'type': 'RandomDistributedScalarEncoder',
-				'fieldname': field_name,
-				'name': field_name,
-				'resolution': resolution,
-				'seed': seed,
-			}
+			'type': 'RandomDistributedScalarEncoder',
+			'fieldname': field_name,
+			'name': field_name,
+			'resolution': resolution,
+			'seed': seed,
 		}
 		return encoder
 
 	@classmethod
-	def _build_category_encoder(
-		cls, field_name, w=21, category_list='1,2,3,4,5',
-	):
+	def _build_category_encoder(cls, field_name, w=21, category_list='1,2,3,4,5',):
 		encoder = {
-			field_name: {
-				'type': 'CategoryEncoder',
-				'fieldname': field_name,
-				'name': field_name,
-				'w': w,
-				'category_list': category_list,
-			}
+			'type': 'CategoryEncoder',
+			'fieldname': field_name,
+			'name': field_name,
+			'w': w,
+			'categoryList': category_list,
 		}
 		return encoder
 
 	@classmethod
 	def _build_timestamp_encoders(cls, field_name):
-		encoders = [
-			{
-				'time_of_day': {
-					'type': 'DateEncoder',
-					'fieldname': field_name,
-					'name': 'time_of_day',
-					'timeOfDay': [21, 1],
-				}
+		encoders = {
+			'time_of_day': {
+				'type': 'DateEncoder',
+				'fieldname': field_name,
+				'name': 'time_of_day',
+				'timeOfDay': [21, 1],
 			},
-			{
-				'weekend': {
-					'type': 'DateEncoder',
-					'fieldname': field_name,
-					'name': 'weekend',
-					'weekend': 21
-				}
+			'weekend': {
+				'type': 'DateEncoder',
+				'fieldname': field_name,
+				'name': 'weekend',
+				'weekend': 21
 			},
-			{
-				'season': {
-					'type': 'DateEncoder',
-					'fieldname': field_name,
-					'name': 'season',
-					'season': 21,
-				}
-			}
-		]
+			'season': {
+				'type': 'DateEncoder',
+				'fieldname': field_name,
+				'name': 'season',
+				'season': 21,
+			},
+		}
 		return encoders
 
 	@classmethod
-	def _build_sdr_classifier_region(
-		cls, predicted_field, max_category_count=1000,
-		steps='1', alpha=0.1, verbosity=0
-	):
+	def _build_sdr_classifier_region(cls, predicted_field, max_category_count=1000, steps='1', alpha=0.1, verbosity=1):
 		classifier = {
-			predicted_field: {
-				'regionType': 'SDRClassifierRegion',
-				'verbosity': verbosity,
-				'alpha': alpha,
-				'steps': steps,
-				'maxCategoryCount': max_category_count,
-				'implementation': 'cpp',
-			}
+			'regionType': 'SDRClassifierRegion',
+			'verbosity': verbosity,
+			'alpha': alpha,
+			'steps': steps,
+			'maxCategoryCount': max_category_count,
+			'implementation': 'cpp',
 		}
 		return classifier
 
@@ -195,23 +186,34 @@ class NupicNetwork(object):
 		"""
 
 		:type timestamp: str | datetime.datetime
-		:type observation: tuple
-		:type action: tuple
+		:param observation: The input data.
+			For example: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+		:type observation: tuple of float
+		:param action: A specific action, we want the network to predict.
+		:type action: float
 		:rtype: str
 		"""
+
 		if isinstance(timestamp, datetime):
-			line = timestamp.isoformat()
+			cycle_timestamp = datetime(
+				timestamp.year,
+				timestamp.month,
+				timestamp.day,
+				timestamp.hour,
+				timestamp.minute,
+				timestamp.second,
+			)
+			line = cycle_timestamp.isoformat()
 		else:
 			line = str(timestamp)
 		for x in observation:
 			line += ', ' + str(x)
-		for x in action:
-			line += ', ' + str(x)
+		line += ', ' + str(action)
 		return line
 
 	def send_message_new_predictor(self):
 		payload = {
-			'model': yaml_model,
+			'model': self.model,
 			'exchange': self.exchange.lower(),
 			'market': f'{self.base.lower()}{self.quote.lower()}',
 			'predicted_field': self.predicted_field.lower(),
@@ -249,6 +251,20 @@ class NupicNetwork(object):
 			print(f'Prediction server started: {self}')
 
 	def send_message_predict_with_learning_off(self, timestamp, observation, action):
+		"""
+		Make a prediction with learning turned off.
+
+		:param timestamp:
+		:param observation: Input data as a "flat" tuple of floats.
+		:type observation: tuple of float
+		:param action: A specific action, we want the network to predict.
+		:type action: float
+		:return: A single predicted value.  But, will return a random number
+			until a prediction is made with learning on.
+		:rtype: float
+		"""
+		if not self.model_was_optimized:
+			return uniform(0.0, 1.0)
 		payload = self._construct_predict_payload(timestamp, observation, action)
 		r = requests.post(
 			self.url_predict_with_learning_off,
@@ -260,11 +276,26 @@ class NupicNetwork(object):
 				f'POST to {self.url_predict_with_learning_off} '
 				f'returned: {r.status_code}\n\n{r.text}')
 		else:
-			self.last_prediction_msg = json.loads(r.text.decode('utf-8'))['message'][0]
-			print(f'Prediction received: {self}')
-			return self.last_prediction_msg
+			response = json.loads(r.content.decode('utf-8'))
+			print(f'Prediction received: {response}')
+			self.last_prediction_msg = response['message'][0]
+			self.last_prediction = self.last_prediction_msg['prediction']
+			return self.last_prediction
 
 	def send_message_predict_with_learning_on(self, timestamp, observation, action):
+		"""
+		Make a prediction with learning turned on.
+
+		:param timestamp:
+		:param observation: Input data as a "flat" tuple of floats.
+		:type observation: tuple of float
+		:param action: A specific action, we want the network to predict.
+		:type action: float
+		:return: A single predicted value.
+		:rtype: float
+		"""
+		if not self.model_was_optimized:
+			self.model_was_optimized = True
 		payload = self._construct_predict_payload(timestamp, observation, action)
 		r = requests.post(
 			self.url_predict_with_learning_on,
@@ -276,9 +307,11 @@ class NupicNetwork(object):
 				f'POST to {self.url_predict_with_learning_on} '
 				f'returned: {r.status_code}\n\n{r.text}')
 		else:
-			self.last_prediction_msg = json.loads(r.text.decode('utf-8'))['message'][0]
-			print(f'Training prediction received: {self}')
-			return self.last_prediction_msg
+			response = json.loads(r.content.decode('utf-8'))
+			print(f'Training prediction received: {response}')
+			self.last_prediction_msg = response['message'][0]
+			self.last_prediction = self.last_prediction_msg['prediction']
+			return self.last_prediction
 
 	def send_message_stop_predictor(self):
 		r = requests.post(self.url_stop_predictor)
@@ -295,15 +328,6 @@ class NupicNetwork(object):
 			return float(self.last_prediction_msg['prediction'])
 
 
-class NetworkLink(object):
-	""" Connects the output of a nupic network to the input of a nupic network. """
-
-	def __init__(self, output_network, input_network, *args, **kwargs):
-		super().__init__(*args, **kwargs)
-		self.output_network = output_network
-		self.input_network = input_network
-
-
 class NupicModel(ModelBase):
 	"""
 	Creates a Nupic Network for Reinforcement Learning (Q-Learning).
@@ -317,7 +341,7 @@ class NupicModel(ModelBase):
 	predict the following inputs and predicted outputs a nupic model will
 	contain 11 nupic networks.  All inputs will be fed into each of the 11
 	nupic networks.
-		Market Data Inputs:
+		Market Data Inputs (13 in total for this example):
 			order_book_level_1_price
 			order_book_level_1_amount
 			order_book_level_2_price
@@ -331,13 +355,13 @@ class NupicModel(ModelBase):
 			account_total_balance
 			account_used_balance
 			account_free_balance
-		Primary Predicted Outputs:
+		Primary Predicted Outputs (5 in total for this example):
 			reward_of_HODL
 			reward_of_market_sell
 			reward_of_market_buy
 			reward_of_limit_sell
 			reward_of_limit_buy
-		Secondary Predicted Outputs:
+		Secondary Predicted Outputs (6 in total for this example):
 			reward_of_amount_level_1
 			reward_of_amount_level_2
 			reward_of_amount_level_3
@@ -359,10 +383,8 @@ class NupicModel(ModelBase):
 		- 5 primary network predicted outputs
 	"""
 
-	# HIGH: write NupicModel.run() method.
-
-	def __init__(self, exchange, base, quote, timeframe,
-				 input_field_names, action_names, *args, **kwargs):
+	def __init__(self, exchange, base, quote, period_secs, input_field_names, action_names,
+				 *args, **kwargs):
 		"""
 		Initialize a nupic predictor via HTTP requests to the `spread-predictor`
 		running inside a Flask docker container.
@@ -392,10 +414,11 @@ class NupicModel(ModelBase):
 		self.exchange = exchange
 		self.base = base
 		self.quote = quote
-		self.timeframe = timeframe
+		self.period_secs = period_secs
+		self.timeframe = f'{period_secs}s'
 		self.primary_input_fields = copy.deepcopy(input_field_names)
 		self.secondary_input_fields = copy.deepcopy(input_field_names)
-		self.secondary_input_fields.extend(action_names['primary'])
+		self.secondary_input_fields.append('selected_primary_action')
 
 		# local vars used for initialization.
 		primary_networks = []
@@ -410,9 +433,9 @@ class NupicModel(ModelBase):
 				quote=quote,
 				input_fields=input_field_names,
 				predicted_field=primary_action_name,
-				timeframe=timeframe,
+				timeframe=self.timeframe,
 			)
-		primary_networks.append(nupic_network)
+			primary_networks.append(nupic_network)
 
 		# instantiate "amount" networks.
 		for amount_action_name in action_names['amount']:
@@ -422,7 +445,7 @@ class NupicModel(ModelBase):
 				quote=quote,
 				input_fields=self.secondary_input_fields,
 				predicted_field=amount_action_name,
-				timeframe=timeframe,
+				timeframe=self.timeframe,
 			)
 			amount_networks.append(nupic_network)
 
@@ -434,53 +457,85 @@ class NupicModel(ModelBase):
 				quote=quote,
 				input_fields=self.secondary_input_fields,
 				predicted_field=price_action_name,
-				timeframe=timeframe,
+				timeframe=self.timeframe,
 			)
 			price_networks.append(nupic_network)
-		self.networks = {
-			'primary': primary_networks,
-			'amount': amount_networks,
-			'price': price_networks,
-		}
+		self.networks = collections.OrderedDict(
+			{
+				'primary': primary_networks, #: 5 primary networks
+				'amount': amount_networks, #: 3 amount networks
+				'price': price_networks, #: 3 price networks
+			}
+		)
 
-	def get_predicted_actions(self, timestamp, observation):
+	def get_selected_action(self, q_values):
 		"""
-		Get the estimated Q-values for the given states from the Nupic predictor.
+		Get the "selected action" by this model from given `q_values`.
 
-		The output of this function is an array of Q-value-arrays.
-		There is a Q-value for each possible action in the game-environment.
-		So the output is a 3-dim array of Open AI discrete shapes:
-			[spaces.Discrete(x), spaces.Discrete(y), spaces.Discrete(z)]
+		:param q_values:
+		:type q_values: tuple of float
+
+		:returns: The action returned assumes the possible actions are 0-indexed.
+			For example, given the following q_values:
+				(0.0, 0.9, 0.1, 0.1, 0.1)
+			And assuming the following actions:
+				['HODL', 'market_sell', 'market_buy', 'limit_sell', 'limit_buy']
+			The selected action would be 'market_sell' or the integer 1.
+		:rtype: int
+		"""
+		selected_action = q_values[0]
+		index = 0
+		for q_value in q_values:
+			if q_value > selected_action:
+				selected_action = q_value
+				index = q_values.index(q_value)
+		return selected_action
+
+	def get_q_values(self, timestamp, observation):
+		"""
+		Get predicted Q-values for a given observation from this Nupic model.
 
 		:param timestamp:
 		:type timestamp: datetime.datetime
 		:param observation:
+			A flat list of observations.  Meaning a list of floats.
 		:type observation: list of float
+
+		:returns: q_values (aka the rewards predicted by this model).
+	 		The output of this function is an array of Q-value-arrays.
+			There is a Q-value for each possible action in the game-environment.
+			So the output is a 3-dim array of Open AI discrete shapes:
+				[spaces.Discrete(x), spaces.Discrete(y), spaces.Discrete(z)]
+
+		 	To be more clear, a more concrete example follows.  Note, for sake
+		 	of the following example all q-values are given as 0.5.
+			For example: ((0.5,0.5,0.5,0.5,0.5), (0.5,0.5,0.5), (0.5,0.5,0.5))
+		:rtype: tuple of tuple
 		"""
-		primary_q_values = ()
-		amount_q_values = ()
-		price_q_values = ()
+		primary_q_values = []
+		amount_q_values = []
+		price_q_values = []
+		secondary_observations = copy.deepcopy(observation)
 
 		# predict primary actions
 		for primary_network in self.networks['primary']:
 			prediction = primary_network.send_message_predict_with_learning_off(
 				timestamp,
 				observation,
-				0, # just use zero while network is not learning.
+				1, # just use zero while network is not learning.
 			)
 			primary_q_values.append(prediction)
 
-		# build observations for "amount" and "price" networks.
-		secondary_observations = (o for o in observation)
-		for q_value in primary_q_values:
-			secondary_observations.append(q_value)
+		# add the "selected primary action" to the secondary observations.
+		selected_primary_action = self.get_selected_action(primary_q_values)
+		secondary_observations.append(selected_primary_action)
 
 		# predict "amount" actions
 		for amount_network in self.networks['amount']:
 			prediction = amount_network.send_message_predict_with_learning_off(
 				timestamp,
-				observation,
-				0, # just use zero while network is not learning.
+				secondary_observations,
+				1, # just use zero while network is not learning.
 			)
 			amount_q_values.append(prediction)
 
@@ -488,55 +543,94 @@ class NupicModel(ModelBase):
 		for price_network in self.networks['price']:
 			prediction = price_network.send_message_predict_with_learning_off(
 				timestamp,
-				observation,
-				0, # just use zero while network is not learning.
+				secondary_observations,
+				1, # just use zero while network is not learning.
 			)
 			price_q_values.append(prediction)
-		return (primary_q_values, amount_q_values, primary_q_values)
+		primary_q_values = tuple(primary_q_values)
+		amount_q_values = tuple(amount_q_values)
+		price_q_values = tuple(price_q_values)
+		self.print_line('-')
+		print(f'Primary Observations: {observation}')
+		print(f'Secondary Observations: {secondary_observations}')
+		print(f'Q-Values: {(primary_q_values, amount_q_values, price_q_values)}')
+		self.print_line('-')
+		return (primary_q_values, amount_q_values, price_q_values)
 
-	def optimize(self, replay_memory, timestamp, observation, ):
+	def optimize(self, replay_memories, timestamp):
 		"""
-		Optimize the Neural Network by sampling states and Q-values
-		from the replay-memory.
+		Optimize the Nupic networks by feeding in replay memories and
+		observations into each network with learning turned on.
 
-		The original DeepMind paper performed one optimization iteration
-		after processing each new state of the game-environment. This is
-		an un-natural way of doing optimization of Neural Networks.
+		------------------------------------------------------------------------
+		NOTE: replay_memory.q_values should contain the adjusted q-values,
+		which means the q-values the nupic model should have predicted.  In
+		other words, the q-values contain the "desired prediction", so just
+		feed them into the nupic model with learning turned on.
+		------------------------------------------------------------------------
 
-		So instead we perform a full optimization run every time the
-		Replay Memory is full (or it is filled to the desired fraction).
-		This also gives more efficient use of a GPU for the optimization.
+		:param replay_memories:
+		:type replay_memories: list of crypto_gym.agents.ReplayMemory
 
-		The problem is that this may over-fit the Neural Network to whatever
-		is in the replay-memory. So we use several tricks to try and adapt
-		the number of optimization iterations.
-
-		:param min_epochs:
-			Minimum number of optimization epochs. One epoch corresponds
-			to the replay-memory being used once. However, as the batches
-			are sampled randomly and biased somewhat, we may not use the
-			whole replay-memory. This number is just a convenient measure.
-
-		:param max_epochs:
-			Maximum number of optimization epochs.
-
-		:param batch_size:
-			Size of each random batch sampled from the replay-memory.
-
-		:param loss_limit:
-			Optimization continues until the average loss-value of the
-			last 100 batches is below this value (or max_epochs is reached).
-
-		:param learning_rate:
-			Learning-rate to use for the optimizer.
+		:param timestamp:
+		:type timestamp: datetime.datetime
 		"""
-		raise NotImplementedError(
-			'connect this method to the Nupic predictor using HTTP POST request.'
-		)
-		# CURRENT: send observation, and Q-values from replay memory to nupic model.
-		#  NOTE: replay_memory.q_values should contain the adjusted q-values, which means
-		#  	the q-values the nupic model should have predicted.  In other words, the
-		#   q-values contain the "desired prediction", so just feed them into
-		#   the nupic model with learning turned on.
+		# initialize the actions selected by the "primary" networks, so they
+		#  can be fed into the "amount" and "price" networks.
+		selected_primary_actions = []
+		replay_memory = replay_memories[0]
+		for i in range(replay_memory.num_used):
+			selected_primary_actions.append(replay_memory.actions[i])
+
+		# train the "primary", "amount", and "price" networks.
+		for network_type, networks in self.networks.items():
+			rp_index = list(self.networks.keys()).index(network_type)
+			replay_memory = replay_memories[rp_index]
+			for network in networks:
+				q_value_index = networks.index(network)
+				for i in range(replay_memory.num_used):
+					# extract observation and q-values from replay memory.
+					observation = replay_memory.states[i]
+					q_values = replay_memory.q_values[i]
+
+					# select the "desired q-value", which corresponds to the
+					# index of the network, because the networks and q-values
+					# should have the same structure and be in the same order.
+					# See NINJA-115 for more information.
+					desired_q_value = q_values[q_value_index]
+					if network_type == 'primary':
+						# train the "primary" network.
+						network.send_message_predict_with_learning_on(
+							timestamp,
+							observation,
+							desired_q_value,
+						)
+					else:
+						# add the "selected primary action" to the secondary observations.
+						secondary_observations = copy.deepcopy(observation)
+						secondary_observations = np.append(
+							secondary_observations,
+							[selected_primary_actions[i]],
+						)
+
+						# train the "secondary" network.
+						network.send_message_predict_with_learning_on(
+							timestamp,
+							secondary_observations,
+							desired_q_value,
+						)
+
+	@property
+	def name(self):
+		return f'{self.__class__.__name__}'
+
+	def print_line(self, x):
+		line = f'{x}' * 100
+		print(f'\n{line}\n')
+
+
+
+
+
 
 
