@@ -8,6 +8,19 @@ forked from [`AnyTrading`](https://github.com/AminHP/gym-anytrading).
 `CryptoTradingGym` is intended to be used with another project I authored, 
 namely [`nupic_predictor`](https://gitlab.com/cybertronninja/nupic-rest-interface).
 
+## Required Dependencies
+
+This project is dependant on the following external projects:
+
+* nupic-predictor
+* Crypto Ninja REST API (api)
+
+## Running the Crypto Gym
+
+1. Install the Crypto Gym by executing `python ./setup.py install`
+2. Run the test case in 
+`Test_QLearnAgent_class.test_run_the_agent_for_one_episode`
+
 
 
 
