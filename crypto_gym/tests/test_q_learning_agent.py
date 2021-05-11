@@ -16,7 +16,7 @@ class Test_QLearnAgent_class(unittest.TestCase):
 		cls.base = 'BTC'
 		cls.quote = 'USD'
 		cls.period_secs = 2
-		cls.ob_levels = 3
+		cls.ob_levels = 20
 		cls.base_url = 'http://0.0.0.0:8000'
 		cls.agent = QLearningAgent(
 			cls.env_name,

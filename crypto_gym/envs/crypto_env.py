@@ -83,22 +83,12 @@ class CryptoEnv(gym.Env):
 
 		:rtype: list of str
 		"""
-		order_book_data = {
-			'order_book_ask_price_lvl_1': ['101.0000000000'],
-			'order_book_ask_amount_lvl_1': ['0.1010000000'],
-			'order_book_bid_price_lvl_1': ['100.0000000000'],
-			'order_book_bid_amount_lvl_1': ['0.1000000000'],
-
-			'order_book_ask_price_lvl_2': ['102.0000000000'],
-			'order_book_ask_amount_lvl_2': ['0.1020000000'],
-			'order_book_bid_price_lvl_2': ['99.0000000000'],
-			'order_book_bid_amount_lvl_2': ['0.0990000000'],
-
-			'order_book_ask_price_lvl_3': ['103.0000000000'],
-			'order_book_ask_amount_lvl_3': ['0.1030000000'],
-			'order_book_bid_price_lvl_3': ['98.0000000000'],
-			'order_book_bid_amount_lvl_3': ['0.0980000000'],
-		}
+		order_book_data = {}
+		for i in range(self.ob_levels):
+			order_book_data[f'order_book_ask_price_lvl_{i}'] = ['101.0']
+			order_book_data[f'order_book_ask_amount_lvl_{i}'] = ['0.101']
+			order_book_data[f'order_book_bid_price_lvl_{i}'] = ['99.0']
+			order_book_data[f'order_book_bid_amount_lvl_{i}'] = ['0.99']
 		trade_data = {
 			'trade_sell_price': '20000.0000000000',
 			'trade_sell_amount': '100.0000000000',
@@ -159,6 +149,7 @@ class CryptoEnv(gym.Env):
 				data=order_book,
 				index=[end_date],
 			)
+			print(f'order_book = {order_book}')
 			self.exchange_rate = float(order_book['order_book_ask_price_lvl_1'][0])
 			return self.order_book_df
 
