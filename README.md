@@ -17,8 +17,9 @@ This project is dependant on the following external projects:
 
 ## Running the Crypto Gym
 
-1. Install the Crypto Gym by executing `python ./setup.py install`
-2. Run the test case in 
+1. Install required pip packages using `python3 -m pip install numpy cython pyparsing==2.4.7`
+2. Install the Crypto Gym by executing `python ./setup.py install`
+3. Run the test case in 
 `Test_QLearnAgent_class.test_run_the_agent_for_one_episode`
 
 
