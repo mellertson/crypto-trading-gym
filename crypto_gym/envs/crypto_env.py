@@ -3,11 +3,40 @@ import pandas as pd
 import requests
 import gym
 import json, prettyprint, copy
-import collections
+import collections, math
 from datetime import datetime, timezone, timedelta
 from gym import spaces
 from gym.utils import seeding
 from .trading_env import TradingEnv
+
+
+def round_half_up(n, decimals=0):
+	"""
+	Round up to the nearest decimal place.
+
+	:param n:
+	:type n: float
+	:param decimals:
+	:type decimals: int
+	:rtype: float
+	"""
+	multiplier = 10 ** decimals
+	y = math.floor(n * multiplier + 0.5) / multiplier
+	return y
+
+def round_half_down(n, decimals=0):
+	"""
+	Round down to the nearest decimal place.
+
+	:param n:
+	:type n: float
+	:param decimals:
+	:type decimals: int
+	:rtype: float
+	"""
+	multiplier = 10 ** decimals
+	y = math.ceil(n * multiplier - 0.5) / multiplier
+	return y
 
 
 class CryptoEnv(gym.Env):
@@ -238,6 +267,8 @@ class CryptoEnv(gym.Env):
 		observation.extend(list(trade.iloc[0]))
 		observation.extend(list(account_balance.iloc[0]))
 		observation.extend(list(position_balance.iloc[0]))
+		print(f'shape of observation = {np.shape(observation)}')
+		print(f'shape of self.observation_space.shape = {self.observation_space.shape}')
 		assert (np.shape(observation) == self.observation_space.shape)
 
 		return observation
@@ -344,6 +375,9 @@ class CryptoEnv(gym.Env):
 		:rtype: tuple
 		"""
 		url = f'{self.base_url}/api/order/'
+		amount = amount / 1000.0
+		amount = round_half_down(amount, decimals=1)
+		amount = int(amount * 1000.0)
 		payload = {
 			'exchange_id': self.exchange,
 			'market': f'{self.base}/{self.quote}',
