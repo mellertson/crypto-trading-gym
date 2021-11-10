@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 import gym
 import json, prettyprint, copy
-import collections, math
+import collections, math, time
 from datetime import datetime, timezone, timedelta
 from gym import spaces
 from gym.utils import seeding
@@ -170,17 +170,18 @@ class CryptoEnv(gym.Env):
 			f'{self.exchange}/' \
 			f'{self.base}/{self.quote}/{self.ob_levels}/'
 		r = requests.get(url)
-		if r.status_code != 200:
-			print(f'ERROR: {r.status_code} recieved by GET from: {url}')
-		else:
-			order_book = json.loads(r.content.decode('utf-8'))
-			self.order_book_df = pd.DataFrame(
-				data=order_book,
-				index=[end_date],
-			)
-			print(f'order_book = {order_book}')
-			self.exchange_rate = float(order_book['order_book_ask_price_lvl_1'][0])
-			return self.order_book_df
+		while r.status_code != 200:
+			print(f'ERROR: {r.status_code} by GET: {url}, sleeping 1 second...')
+			time.sleep(1)
+			r = requests.get(url)
+		order_book = json.loads(r.content.decode('utf-8'))
+		self.order_book_df = pd.DataFrame(
+			data=order_book,
+			index=[end_date],
+		)
+		print(f'order_book = {order_book}')
+		self.exchange_rate = float(order_book['order_book_ask_price_lvl_1'][0])
+		return self.order_book_df
 
 	def fetch_trade_data(self):
 		"""
@@ -194,15 +195,16 @@ class CryptoEnv(gym.Env):
 			f'{self.base}/{self.quote}/' \
 			f'{self.last_step_dt.isoformat()}/{end_date.isoformat()}/'
 		r = requests.get(url)
-		if r.status_code != 200:
-			print(f'ERROR: {r.status_code} recieved by GET from: {url}')
-		else:
-			trades = json.loads(r.content.decode('utf-8'))
-			self.trade_df = pd.DataFrame(
-				data=trades,
-				index=[end_date],
-			)
-			return self.trade_df
+		while r.status_code != 200:
+			print(f'ERROR: {r.status_code} by GET from: {url} sleeping 1 second...')
+			time.sleep(1)
+			r = requests.get(url)
+		trades = json.loads(r.content.decode('utf-8'))
+		self.trade_df = pd.DataFrame(
+			data=trades,
+			index=[end_date],
+		)
+		return self.trade_df
 
 	def fetch_account_balance_data(self):
 		"""
@@ -215,15 +217,15 @@ class CryptoEnv(gym.Env):
 			f'{self.exchange}/' \
 			f'{self.base}/'
 		r = requests.get(url)
-		if r.status_code != 200:
-			print(f'ERROR: {r.status_code} recieved by GET from: {url}')
-		else:
-			account_balance = json.loads(r.content.decode('utf-8'))
-			self.account_bal_df = pd.DataFrame(
-				data=account_balance,
-				index=[end_date],
-			)
-			return self.account_bal_df
+		while r.status_code != 200:
+			print(f'ERROR: {r.status_code} by GET from: {url} sleeping 1 second...')
+			time.sleep(1)
+		account_balance = json.loads(r.content.decode('utf-8'))
+		self.account_bal_df = pd.DataFrame(
+			data=account_balance,
+			index=[end_date],
+		)
+		return self.account_bal_df
 
 	def fetch_position_balance_data(self):
 		"""
@@ -237,15 +239,15 @@ class CryptoEnv(gym.Env):
 			f'{self.base}/' \
 			f'{self.quote}/'
 		r = requests.get(url)
-		if r.status_code != 200:
-			print(f'ERROR: {r.status_code} recieved by GET from: {url}')
-		else:
-			position_balance = json.loads(r.content.decode('utf-8'))
-			self.position_bal_df = pd.DataFrame(
-				data=position_balance,
-				index=[end_date],
-			)
-			return self.position_bal_df
+		while r.status_code != 200:
+			print(f'ERROR: {r.status_code} by GET from: {url} sleeping 1 second...')
+			time.sleep(1)
+		position_balance = json.loads(r.content.decode('utf-8'))
+		self.position_bal_df = pd.DataFrame(
+			data=position_balance,
+			index=[end_date],
+		)
+		return self.position_bal_df
 
 	def get_next_observation(self):
 		"""
