@@ -343,7 +343,7 @@ class EpsilonGreedy:
 
 	def __init__(self, num_actions,
 				 epsilon_testing=0.05,
-				 num_iterations=1e6,
+				 num_iterations=10,
 				 start_value=1.0, end_value=0.1,
 				 repeat=False):
 		"""

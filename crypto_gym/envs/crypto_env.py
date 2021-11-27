@@ -217,7 +217,7 @@ class CryptoEnv(gym.Env):
 			f'{self.exchange}/' \
 			f'{self.base}/'
 		r = requests.get(url)
-		while r.status_code != 200:
+		if r.status_code != 200:
 			print(f'ERROR: {r.status_code} by GET from: {url} sleeping 1 second...')
 			time.sleep(1)
 		account_balance = json.loads(r.content.decode('utf-8'))
@@ -239,7 +239,7 @@ class CryptoEnv(gym.Env):
 			f'{self.base}/' \
 			f'{self.quote}/'
 		r = requests.get(url)
-		while r.status_code != 200:
+		if r.status_code != 200:
 			print(f'ERROR: {r.status_code} by GET from: {url} sleeping 1 second...')
 			time.sleep(1)
 		position_balance = json.loads(r.content.decode('utf-8'))
@@ -423,7 +423,7 @@ class CryptoEnv(gym.Env):
 			f'{self.base}/' \
 			f'{self.quote}/'
 		r = requests.put(url)
-		while r.status_code != 200:
+		if r.status_code != 200:
 			print(f'ERROR: {r.status_code} during PUT to: {url} sleeping 1 second...')
 			time.sleep(1.0)
 
