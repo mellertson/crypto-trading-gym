@@ -73,7 +73,7 @@ class CryptoEnv(gym.Env):
 			'limit_sell',
 			'limit_buy',
 			# TODO: add liquidate to Django REST API for 'liquidate' action.
-			# 'liquidate',
+			'liquidate',
 		]
 		self._amount_actions = collections.OrderedDict()
 		self._amount_actions['amount_level_1'] = 0.002 #: meaning 0.5% of account.free_balance.
@@ -299,6 +299,8 @@ class CryptoEnv(gym.Env):
 			return ['limit', 'sell']
 		elif action_name == 'limit_buy':
 			return ['limit', 'buy']
+		elif action_name == 'liquidate':
+			return ['liquidate', None]
 		else:
 			return [None, None]
 
@@ -408,7 +410,22 @@ class CryptoEnv(gym.Env):
 
 		:rtype: float
 		"""
-		return self.last_total_balance - self.account_balance_total
+		return self.account_balance_total - self.last_total_balance
+
+	def execute_action_close_open_position(self):
+		"""
+		Send PUT request to close the open position.
+
+		:rtype: None
+		"""
+		url = f'{self.base_url}/api/position/close/' \
+			f'{self.exchange}/' \
+			f'{self.base}/' \
+			f'{self.quote}/'
+		r = requests.put(url)
+		while r.status_code != 200:
+			print(f'ERROR: {r.status_code} during PUT to: {url} sleeping 1 second...')
+			time.sleep(1.0)
 
 	def execute_action(self, actions):
 		"""
@@ -416,13 +433,17 @@ class CryptoEnv(gym.Env):
 
 		:param actions: The actions to execute in this environment. The actions
 			for this environment are:
-			(primary_action, acmount_action, price_action)
+			(primary_action, amount_action, price_action)
 		:type actions: list of int
 
 		:return:
 		"""
 		order_type, side = self.translate_primary_action(actions[0])
-		if order_type is not None:
+		if order_type == 'liquidate':
+			# close the open position.
+			self.execute_action_close_open_position()
+			return
+		elif order_type is not None:
 			amount = self.translate_amount_action(actions[1])
 			price = self.translate_price_action(actions[2], side)
 
