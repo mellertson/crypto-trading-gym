@@ -470,11 +470,11 @@ class QLearningAgent(object):
 		for action_names in self.env.action_names.values():
 			self.epsilon_greedies.append(
 				EpsilonGreedy(
-					start_value=1.0,
-					end_value=0.1,
-					num_iterations=1e6,
+					start_value=0.01,
+					end_value=0.0,
+					num_iterations=10,
 					num_actions=len(action_names),
-					epsilon_testing=0.01,
+					epsilon_testing=0.001,
 				)
 			)
 
@@ -483,14 +483,14 @@ class QLearningAgent(object):
 		self.learning_rate_control = LinearControlSignal(
 			start_value=1e-3,
 			end_value=1e-5,
-			num_iterations=5e6,
+			num_iterations=1000,
 		)
 		# The loss-limit is used to abort the optimization whenever the
 		# mean batch-loss falls below this limit.
 		self.loss_limit_control = LinearControlSignal(
 			start_value=0.1,
 			end_value=0.015,
-			num_iterations=5e6,
+			num_iterations=1000,
 		)
 		# The maximum number of epochs to perform during optimization.
 		# This is increased from 5 to 10 epochs, because it was found for
@@ -500,8 +500,8 @@ class QLearningAgent(object):
 		# and would therefore have to optimize for more iterations
 		# because the learning-rate had been decreased.
 		self.max_epochs_control = LinearControlSignal(
-			start_value=5.0,
-			end_value=10.0,
+			start_value=1.0,
+			end_value=1.0,
 			num_iterations=5e6,
 		)
 		# The fraction of the replay-memory to be used.
@@ -513,7 +513,7 @@ class QLearningAgent(object):
 		self.replay_fraction = LinearControlSignal(
 			start_value=0.1,
 			end_value=1.0,
-			num_iterations=5e6,
+			num_iterations=1000,
 		)
 		# We only create the replay-memory when we are training the agent,
 		# because it requires a lot of RAM.
