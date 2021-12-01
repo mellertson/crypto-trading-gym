@@ -217,9 +217,10 @@ class CryptoEnv(gym.Env):
 			f'{self.exchange}/' \
 			f'{self.base}/'
 		r = requests.get(url)
-		if r.status_code != 200:
+		while r.status_code != 200:
 			print(f'ERROR: {r.status_code} by GET from: {url} sleeping 1 second...')
 			time.sleep(1)
+			r = requests.get(url)
 		account_balance = json.loads(r.content.decode('utf-8'))
 		self.account_bal_df = pd.DataFrame(
 			data=account_balance,
@@ -239,9 +240,10 @@ class CryptoEnv(gym.Env):
 			f'{self.base}/' \
 			f'{self.quote}/'
 		r = requests.get(url)
-		if r.status_code != 200:
+		while r.status_code != 200:
 			print(f'ERROR: {r.status_code} by GET from: {url} sleeping 1 second...')
 			time.sleep(1)
+			r = requests.get(url)
 		position_balance = json.loads(r.content.decode('utf-8'))
 		self.position_bal_df = pd.DataFrame(
 			data=position_balance,
