@@ -94,7 +94,7 @@ class CryptoEnv(gym.Env):
 		self._order_book_length = ob_levels * 4 #: buy & sell price & amount per ob level
 		self._trade_length = 4 #: buy & sell price & amount
 		self._account_bal_length = 3 #: total, used, & free balances
-		self._position_bal_length = 3 #: total, used, & free balances
+		self._position_bal_length = 6 #: total, used, & free balances
 		self.shape = tuple([len(self.get_input_field_names())])
 		self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=self.shape)
 		self.order_book_df = None
@@ -103,6 +103,82 @@ class CryptoEnv(gym.Env):
 		self.position_bal_df = None
 		self.last_total_balance = None
 		self.orders = []
+		self.last_observation = []
+		self.last_action_order_type = None
+		self.last_action_price = None
+		self.last_action_amount = None
+		self.last_action_was_executed = True
+
+	def len_actionable_game_space(self):
+		"""
+		Gets the length of observation space which the agent should use to
+		make decisions.
+
+		For Bitmex Tesnet the "actionable game space" includes the order book,
+		and trade history.  But, does not include account balance information,
+		nor position information.  Account balance and position information is
+		not included in the "actionable game space" to avoid agent induced
+		feedback loops, e.g. when the agent places a market order.
+
+		:rtype: int
+		"""
+		return len(self.get_input_field_names()) \
+			   - len(self.get_account_field_names()) \
+			   - len(self.get_position_field_names())
+
+	def get_order_book_field_names(self):
+		"""
+		Get order book field names
+
+		:rtype: dict
+		"""
+		order_book_data = {}
+		for i in range(self.ob_levels):
+			order_book_data[f'order_book_ask_price_lvl_{i}'] = ['101.0']
+			order_book_data[f'order_book_ask_amount_lvl_{i}'] = ['0.101']
+			order_book_data[f'order_book_bid_price_lvl_{i}'] = ['99.0']
+			order_book_data[f'order_book_bid_amount_lvl_{i}'] = ['0.99']
+		return order_book_data
+
+	def get_trade_field_names(self):
+		"""
+		Get trade field names
+
+		:rtype: dict
+		"""
+		return {
+			'trade_sell_price': '20000.0000000000',
+			'trade_sell_amount': '100.0000000000',
+			'trade_buy_price': '21000.0000000000',
+			'trade_buy_amount': '200.0000000000',
+		}
+
+	def get_position_field_names(self):
+		"""
+		Get position field names
+
+		:rtype: dict
+		"""
+		return {
+			'position_status': '0',
+			'position_side': '0',
+			'position_entry_price': '0',
+			'position_break_even_price': '0',
+			'position_liquidation_price': '0',
+			'position_current_amount': '0',
+		}
+
+	def get_account_field_names(self):
+		"""
+		Get account field names
+
+		:rtype: dict
+		"""
+		return {
+			'total_balance': '<str:account.total_balance>',
+			'used_balance': '<str:account.used_balance>',
+			'free_balance': '<str:account.free_balance>',
+		}
 
 	def get_input_field_names(self):
 		"""
@@ -112,35 +188,10 @@ class CryptoEnv(gym.Env):
 
 		:rtype: list of str
 		"""
-		order_book_data = {}
-		for i in range(self.ob_levels):
-			order_book_data[f'order_book_ask_price_lvl_{i}'] = ['101.0']
-			order_book_data[f'order_book_ask_amount_lvl_{i}'] = ['0.101']
-			order_book_data[f'order_book_bid_price_lvl_{i}'] = ['99.0']
-			order_book_data[f'order_book_bid_amount_lvl_{i}'] = ['0.99']
-		trade_data = {
-			'trade_sell_price': '20000.0000000000',
-			'trade_sell_amount': '100.0000000000',
-			'trade_buy_price': '21000.0000000000',
-			'trade_buy_amount': '200.0000000000',
-		}
-		account_balance_data = {
-			'total_balance': '<str:account.total_balance>',
-			'used_balance': '<str:account.used_balance>',
-			'free_balance': '<str:account.free_balance>',
-		}
-		position_balance = {
-			'position_status': '0',
-			'position_side': '0',
-			'position_entry_price': '0',
-			'position_break_even_price': '0',
-			'position_liquidation_price': '0',
-			'position_current_amount': '0',
-		}
-		fields = list(order_book_data.keys())
-		fields.extend(trade_data.keys())
-		fields.extend(account_balance_data.keys())
-		fields.extend(position_balance.keys())
+		fields = list(self.get_order_book_field_names().keys())
+		fields.extend(self.get_trade_field_names().keys())
+		fields.extend(self.get_account_field_names().keys())
+		fields.extend(self.get_position_field_names().keys())
 		return fields
 
 	def build_action_names(self):
@@ -179,7 +230,7 @@ class CryptoEnv(gym.Env):
 			data=order_book,
 			index=[end_date],
 		)
-		print(f'order_book = {order_book}')
+		# print(f'order_book = {order_book}')
 		self.exchange_rate = float(order_book['order_book_ask_price_lvl_1'][0])
 		return self.order_book_df
 
@@ -271,8 +322,8 @@ class CryptoEnv(gym.Env):
 		observation.extend(list(trade.iloc[0]))
 		observation.extend(list(account_balance.iloc[0]))
 		observation.extend(list(position_balance.iloc[0]))
-		print(f'shape of observation = {np.shape(observation)}')
-		print(f'shape of self.observation_space.shape = {self.observation_space.shape}')
+		# print(f'shape of observation = {np.shape(observation)}')
+		# print(f'shape of self.observation_space.shape = {self.observation_space.shape}')
 		assert (np.shape(observation) == self.observation_space.shape)
 
 		return observation
@@ -438,33 +489,64 @@ class CryptoEnv(gym.Env):
 			(primary_action, amount_action, price_action)
 		:type actions: list of int
 
-		:return:
+		:returns:
+			True - if the last action was executed.
+			False - if the last action was not executed.
+		:rtype: bool
 		"""
 		order_type, side = self.translate_primary_action(actions[0])
+		if self.last_action_order_type == order_type:
+			return False
 		if order_type == 'liquidate':
 			# close the open position.
 			self.execute_action_close_open_position()
-			return
-		elif order_type is not None:
-			amount = self.translate_amount_action(actions[1])
-			price = self.translate_price_action(actions[2], side)
+			self.last_action_order_type = order_type
+			return True
+		elif order_type is None:
+			return False
 
-			url, payload = self.build_order_url_and_payload(
-				order_type,
-				side,
-				price,
-				amount
-			)
-			if price > 0 and amount > 0:
-				r = requests.post(url, json=payload)
-				if r.status_code != 201:
-					print(f'ERROR: {r.status_code} recieved by GET from: {url}')
-				else:
-					order = json.loads(r.content.decode('utf-8'))
-					print(f'Order Placed: {order}')
-					self.orders.append(order)
+		amount = self.translate_amount_action(actions[1])
+		price = self.translate_price_action(actions[2], side)
+		if self.last_action_amount == amount:
+			return False
+		if self.last_action_price == price:
+			return False
+		self.last_action_order_type = order_type
+		self.last_action_amount = amount
+		self.last_action_price = price
+		url, payload = self.build_order_url_and_payload(
+			order_type,
+			side,
+			price,
+			amount
+		)
+		if price > 0 and amount > 0:
+			r = requests.post(url, json=payload)
+			if r.status_code != 201:
+				print(f'ERROR: {r.status_code} recieved by GET from: {url}')
+			else:
+				order = json.loads(r.content.decode('utf-8'))
+				print(f'Order Placed: {order}')
+				self.orders.append(order)
+			return True
+		else:
+			return False
 
-	def step(self, actions):
+	def is_observation_space_changed(self, obs):
+		"""
+		Test if the current observation is different than the last one
+
+		:param obs: The current observation
+		:type obs: tuple | list
+		:rtype: bool
+		"""
+		if self.last_observation == obs:
+			return False
+		else:
+			self.last_observation = obs
+			return True
+
+	def step(self, actions, observation=None):
 		"""
 		Execute action in the environment and return the next state.
 
@@ -474,6 +556,10 @@ class CryptoEnv(gym.Env):
 			for this environment are:
 			(primary_action, acmount_action, price_action)
 		:type actions: list of int
+		:param observation: If observation is not None a new observation
+			will be gotten and returned.
+			If observation is None, this observation kwarg will be returned.
+		:type observation: list | tuple | None
 
 		Returns:
 			observation (object): agent's observation of the current environment
@@ -483,8 +569,9 @@ class CryptoEnv(gym.Env):
             info (dict): contains auxiliary diagnostic information (helpful
             	for debugging, and sometimes learning)
 		"""
-		self.execute_action(actions)
-		observation = self.get_next_observation()
+		self.last_action_was_executed = self.execute_action(actions)
+		if observation is None:
+			observation = self.get_next_observation()
 		reward = self.reward
 		done = self.done
 		info = self.current_info

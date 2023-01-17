@@ -451,6 +451,7 @@ class QLearningAgent(object):
 		self.discount_factor = discount_factor
 		self.render = render
 		self.rp_mem_size = rp_mem_size
+		self._print_buffer = ''
 		# instantiate Open AI Gym environment
 		# self.env = gym.make(env_name)
 		self.env = CryptoEnv(
@@ -590,16 +591,17 @@ class QLearningAgent(object):
 
 		# Counter for the number of states we have processed.
 		count_states = self.replay_memories[0].get_count_states()
-
-		# get observation as a "flat" tuple of floats
-		observation = self.env.get_next_observation()
-
 		next_episode_time = datetime.now() - self.period_td
 
 		while self.is_running:
 			if num_episodes is not None:
 				if current_episode > num_episodes:
 					break
+			observation = self.env.get_next_observation()
+			if not self.env.is_observation_space_changed(observation):
+				sleep(self.period_td.total_seconds())
+				continue
+
 			current_episode += 1
 
 			# get q-values as tuple of tuple
@@ -619,13 +621,21 @@ class QLearningAgent(object):
 			assert(len(actions) == 3)
 
 			# Take a step in the game-environment using the given action.
-			observation, reward, end_episode, info = self.env.step(actions=actions)
+			observation, reward, end_episode, info = self.env.step(
+				actions,
+				observation=observation,
+			)
 
 			# TODO: calculate if the agent has "lost a life" in `end_life` var.
 			end_life = False
 
 			if self.render:
 				self.env.render()
+
+			if not self.env.last_action_was_executed:
+				current_episode -= 1
+				sleep(self.period_td.total_seconds())
+				continue
 
 			# Add the state to the replay-memories instances.
 			for replay_memory in self.replay_memories:
@@ -675,13 +685,16 @@ class QLearningAgent(object):
 				for replay_memory in self.replay_memories:
 					replay_memory.reset()
 
-			self.print_line('x')
 			# re-init next episode time
 			next_episode_time = next_episode_time + self.period_td
+			print(f'Action: {self.env.last_action_order_type}, '
+				  f'Price: {self.env.last_action_price}, '
+				  f'Amount: {self.env.last_action_amount}')
 			print(f'Sleeping {self.period_td.total_seconds()} seconds...')
 			print(f'End of episode: {current_episode}')
 			self.print_line('x')
 			sleep(self.period_td.total_seconds())
+			self.env.last_observation = self.env.get_next_observation()
 
 	def print_line(self, x):
 		line = f'{x}' * 100

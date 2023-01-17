@@ -550,11 +550,11 @@ class NupicModel(ModelBase):
 		primary_q_values = tuple(primary_q_values)
 		amount_q_values = tuple(amount_q_values)
 		price_q_values = tuple(price_q_values)
-		self.print_line('-')
-		print(f'Primary Observations: {observation}')
-		print(f'Secondary Observations: {secondary_observations}')
-		print(f'Q-Values: {(primary_q_values, amount_q_values, price_q_values)}')
-		self.print_line('-')
+		# self.print_line('-')
+		# print(f'Primary Observations: {observation}')
+		# print(f'Secondary Observations: {secondary_observations}')
+		# print(f'Q-Values: {(primary_q_values, amount_q_values, price_q_values)}')
+		# self.print_line('-')
 		return (primary_q_values, amount_q_values, price_q_values)
 
 	def optimize(self, replay_memories, timestamp):
