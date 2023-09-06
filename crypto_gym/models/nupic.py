@@ -219,6 +219,7 @@ class NupicNetwork(object):
 			'predicted_field': self.predicted_field.lower(),
 			'timeframe': self.timeframe.lower(),
 		}
+		print(f'payload = {payload}')
 		r = requests.post(
 			self.url_new_predictor,
 			data=json.dumps(payload),
@@ -239,7 +240,7 @@ class NupicNetwork(object):
 			self.line_3('T', self.input_fields, self.predicted_field),
 		]
 		r = requests.post(
-			'http://localhost:5000/start/predictor/{}/'.format(self.predictor_id),
+			self.url_start_predictor,
 			data=json.dumps(payload),
 			headers={'Content-type': 'application/json', 'Accept': 'text/plain'},
 		)

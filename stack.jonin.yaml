@@ -1,0 +1,29 @@
+version: "3.8"
+
+networks:
+    bamm_front:
+        external:
+            name: bamm_front
+
+services:
+
+    agent:
+        image: registry.cybertron.ninja/bamm_crypto_trading_gym:latest
+        deploy:
+            replicas: 1
+            placement:
+                max_replicas_per_node: 1
+        user: '9001:9001'
+        env_file:
+            - .jonin.env
+        networks:
+            bamm_front:
+
+
+
+
+
+
+
+
+
