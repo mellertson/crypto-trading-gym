@@ -11,11 +11,16 @@ __all__ = [
 ]
 
 
-PREDICTOR_SERVER_BASE_URL = 'http://localhost:5000'
+PREDICTOR_SERVER_BASE_URL = os.environ.get(
+	'PREDICTOR_SERVER_BASE_URL',
+	default='http://localhost:5000',
+)
 
 
 def set_predictor_server_base_url(url):
 	PREDICTOR_SERVER_BASE_URL = url
+	os.environ['PREDICTOR_SERVER_BASE_URL'] = url
+	return PREDICTOR_SERVER_BASE_URL
 
 
 class ModelBase(object):

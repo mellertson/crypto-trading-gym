@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from . import *
 from ..agents.qlearn import *
 from ..envs.crypto_env import CryptoEnv
+from ..models import set_predictor_server_base_url
 
 
 class Test_QLearnAgent_class(unittest.TestCase):
@@ -17,6 +18,12 @@ class Test_QLearnAgent_class(unittest.TestCase):
 		cls.quote = 'USD'
 		cls.period_secs = 2
 		cls.ob_levels = 3
+		# Nupic Predictor REST API URL
+		cls.nupic_predictor_url = set_predictor_server_base_url(
+			'http://localhost:5000',
+		)
+
+		# Django REST API URL
 		cls.base_url = 'http://0.0.0.0:8000'
 		cls.agent = QLearningAgent(
 			cls.env_name,

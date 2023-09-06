@@ -440,6 +440,22 @@ class QLearningAgent(object):
 
 	def __init__(self, env_name, exchange, base, quote, period_secs, ob_levels,
 				 base_url, discount_factor=0.97, render=False, rp_mem_size=120):
+		"""
+		Constructor
+
+		:param env_name:
+		:param exchange:
+		:param base:
+		:param quote:
+		:param period_secs:
+		:param ob_levels:
+		:param str base_url:
+			The URL of the Algo-Backend Django REST API, to get market
+			data from.
+		:param discount_factor:
+		:param render:
+		:param rp_mem_size:
+		"""
 		self.env_name = env_name
 		self.exchange = exchange
 		self.base = base

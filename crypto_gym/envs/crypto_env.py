@@ -91,8 +91,8 @@ class CryptoEnv(gym.Env):
 		])
 		self.action_names = self.build_action_names()
 		# define the observation space
-		self._order_book_length = ob_levels * 4 #: buy & sell price & amount per ob level
-		self._trade_length = 4 #: buy & sell price & amount
+		self._order_book_length = ob_levels * 4 #: buy & sell prices and buy & sell amounts per ob level
+		self._trade_length = 4 #: buy & sell prices and buy & sell amounts
 		self._account_bal_length = 3 #: total, used, & free balances
 		self._position_bal_length = 6 #: total, used, & free balances
 		self.shape = tuple([len(self.get_input_field_names())])
@@ -184,7 +184,7 @@ class CryptoEnv(gym.Env):
 		"""
 		Return a list of field names from the data source.
 
-		# HIGH: build input field names dynamically from the Django JSON data.
+		# MEDIUM: build input field names dynamically from the Django JSON data.
 
 		:rtype: list of str
 		"""
@@ -192,6 +192,7 @@ class CryptoEnv(gym.Env):
 		fields.extend(self.get_trade_field_names().keys())
 		fields.extend(self.get_account_field_names().keys())
 		fields.extend(self.get_position_field_names().keys())
+		# HIGH: add 2 fields for Twitter.user & sentiment_score
 		return fields
 
 	def build_action_names(self):
@@ -316,6 +317,7 @@ class CryptoEnv(gym.Env):
 		trade = self.fetch_trade_data()
 		account_balance = self.fetch_account_balance_data()
 		position_balance = self.fetch_position_balance_data()
+		# HIGH: get Twitter sentiment data and include it as a data source.
 
 		# concatenate dataframes together
 		observation = list(order_book.iloc[0])

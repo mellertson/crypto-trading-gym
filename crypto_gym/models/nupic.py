@@ -336,8 +336,8 @@ class NupicModel(ModelBase):
 	a Flask docker container and available to receive HTTP requests on
 	port 5000.
 
-	Typical nupic models will contain multiple nupic networks. For each predited
-	output one additional nupic netork is required.  For example, to
+	Typical nupic models will contain multiple nupic networks. For each predicted
+	output one nupic network is required.  For example, to
 	predict the following inputs and predicted outputs a nupic model will
 	contain 11 nupic networks.  All inputs will be fed into each of the 11
 	nupic networks.
@@ -425,7 +425,8 @@ class NupicModel(ModelBase):
 		amount_networks = []
 		price_networks = []
 
-		# instantiate primary networks for "primary" actions.
+		# Primary output networks.
+		# instantiate "buy/sell/HODL" networks for "primary" actions.
 		for primary_action_name in action_names['primary']:
 			nupic_network = NupicNetwork(
 				exchange=exchange,
@@ -437,7 +438,8 @@ class NupicModel(ModelBase):
 			)
 			primary_networks.append(nupic_network)
 
-		# instantiate "amount" networks.
+		# Secondary output networks.
+		# instantiate "amount" and "price" networks for "secondary" actions.
 		for amount_action_name in action_names['amount']:
 			nupic_network = NupicNetwork(
 				exchange=exchange,
@@ -449,6 +451,7 @@ class NupicModel(ModelBase):
 			)
 			amount_networks.append(nupic_network)
 
+		# Input networks.
 		# instantiate "price" networks.
 		for price_action_name in action_names['price']:
 			nupic_network = NupicNetwork(
@@ -462,9 +465,9 @@ class NupicModel(ModelBase):
 			price_networks.append(nupic_network)
 		self.networks = collections.OrderedDict(
 			{
-				'primary': primary_networks, #: 5 primary networks
-				'amount': amount_networks, #: 3 amount networks
-				'price': price_networks, #: 3 price networks
+				'primary': primary_networks, #: 5 primary output networks
+				'amount': amount_networks, #: 6 secondary output networks
+				'price': price_networks, #: 13 price data input networks
 			}
 		)
 
@@ -627,6 +630,16 @@ class NupicModel(ModelBase):
 	def print_line(self, x):
 		line = f'{x}' * 100
 		print(f'\n{line}\n')
+
+
+
+
+
+
+
+
+
+
 
 
 
