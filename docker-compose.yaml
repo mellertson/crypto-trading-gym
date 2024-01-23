@@ -3,7 +3,7 @@ version: "3.8"
 services:
 
     api:
-        image: registry.cybertron.ninja/bamm_crypto_trading_gym:latest
+        image: registry.cybertron.ninja/bamm_crypto_trading_gym:1.1
         build:
             context: ./
             dockerfile: Dockerfile

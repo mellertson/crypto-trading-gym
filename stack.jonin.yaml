@@ -8,7 +8,7 @@ networks:
 services:
 
     agent:
-        image: registry.cybertron.ninja/bamm_crypto_trading_gym:latest
+        image: registry.cybertron.ninja/bamm_crypto_trading_gym:1.1
         deploy:
             replicas: 1
             placement:
