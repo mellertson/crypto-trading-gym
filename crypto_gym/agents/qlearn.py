@@ -693,8 +693,8 @@ class QLearningAgent(object):
 				)
 
 				# Save a checkpoint of the Neural Network so we can reload it.
-				# HIGH: write NupicModel.save_checkpoint() method.
-				self.model.save_checkpoint(count_states)
+				# COMPLETED: write NupicModel.save_checkpoint() method.
+				self.model.save_checkpoint()
 
 				# Reset the replay-memory. This throws away all the data we have
 				# just gathered, so we will have to fill the replay-memory again.

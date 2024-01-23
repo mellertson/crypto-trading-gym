@@ -104,6 +104,9 @@ class NupicNetwork(object):
 		return f'{PREDICTOR_SERVER_BASE_URL}/predict/{self.predictor_id}/true/'
 
 	@property
+	def url_save_predictor(self):
+		return f'{PREDICTOR_SERVER_BASE_URL}/save/predictor/{self.predictor_id}/'
+
 	def url_stop_predictor(self):
 		return f'{PREDICTOR_SERVER_BASE_URL}/stop/predictor/{self.predictor_id}/'
 
@@ -314,6 +317,15 @@ class NupicNetwork(object):
 			self.last_prediction = self.last_prediction_msg['prediction']
 			return self.last_prediction
 
+	def send_message_save_predictor(self):
+		r = requests.post(self.url_save_predictor)
+		if r.status_code != 200:
+			raise RuntimeError(
+				f'POST to {self.url_save_predictor} '
+				f'returned: {r.status_code}\n\n{r.text}')
+		else:
+			print(f'{self} saved on prediction server.')
+
 	def send_message_stop_predictor(self):
 		r = requests.post(self.url_stop_predictor)
 		if r.status_code != 200:
@@ -333,9 +345,9 @@ class NupicModel(ModelBase):
 	"""
 	Creates a Nupic Network for Reinforcement Learning (Q-Learning).
 
-	This model depends on the `spread-predictor` and it must be running inside
-	a Flask docker container and available to receive HTTP requests on
-	port 5000.
+	This model depends on Docker service `bamm-nupic-predictor` and it must
+	be running inside a Flask docker container and available to receive HTTP
+	requests on	port 5000.
 
 	Typical nupic models will contain multiple nupic networks. For each predicted
 	output one nupic network is required.  For example, to
@@ -632,7 +644,15 @@ class NupicModel(ModelBase):
 		line = f'{x}' * 100
 		print(f'\n{line}\n')
 
-
+	def save_checkpoint(self):
+		"""
+		Serialize the model to the Django database so it can be loaded later.
+		"""
+		# save the "primary", "amount", and "price" networks.
+		for network_type, networks in self.networks.items():
+			for network in networks:
+				# save the Nupic network.
+				network.send_message_save_predictor()
 
 
 
