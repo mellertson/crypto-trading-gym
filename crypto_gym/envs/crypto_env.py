@@ -76,9 +76,9 @@ class CryptoEnv(gym.Env):
 			'liquidate',
 		]
 		self._amount_actions = collections.OrderedDict()
-		self._amount_actions['amount_level_1'] = 0.002 #: meaning 0.5% of account.free_balance.
-		self._amount_actions['amount_level_2'] = 0.004 #: meaning 0.7% of account.free_balance.
-		self._amount_actions['amount_level_3'] = 0.006 #: meaning 0.9% of account.free_balance.
+		self._amount_actions['amount_level_1'] = 0.01 #: meaning 0.5% of account.free_balance.
+		self._amount_actions['amount_level_2'] = 0.012 #: meaning 0.7% of account.free_balance.
+		self._amount_actions['amount_level_3'] = 0.014 #: meaning 0.9% of account.free_balance.
 		self._price_actions = [
 			'price_level_1',
 			'price_level_2',

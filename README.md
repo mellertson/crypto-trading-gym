@@ -29,16 +29,17 @@ Because, Docker Compose is used you can build the container by
 executing the following in a terminal.
 
 ```shell script
-docker-compose build
+docker compose build
+docker push registry.cybertron.ninja/bamm_crypto_trading_gym:1.1
 ```
 
-# Deploying on JONIN (production)
+# Deploying on JONIN
 
 To begin running the Nupic Q-Learning Trading Agent executing the following on 
 a Docker Swarm manager node.
 
 ```shell script
-docker stack deploy -c stack.jonin.yaml --with-registry-auth bamm-crypto-trading-gym
+docker stack deploy -c stack.jonin.yaml bamm-crypto-trading-gym
 ```
 
 Once launched the you can view the agents progress training in the 
